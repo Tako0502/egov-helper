@@ -39,14 +39,16 @@ import { checkBin, signDocument, inspectSignature, addTimestamp } from '@smoker_
 
 ### Single `<script>` for Razor / MVC views
 
-After `npm run build`, copy `dist/egov-helper.min.js` into your project's static folder.
+Either pull from a CDN:
 
 ```html
-<script src="/lib/egov-helper.min.js"></script>
+<script src="https://unpkg.com/@smoker_winston/egov-helper/dist/egov-helper.min.js"></script>
 <script>
   const { checkBin, signDocument, inspectSignature } = window.EgovHelper;
 </script>
 ```
+
+…or `npm install` and copy `node_modules/@smoker_winston/egov-helper/dist/egov-helper.min.js` into your project's static folder so it ships with your build.
 
 ### .NET backend
 

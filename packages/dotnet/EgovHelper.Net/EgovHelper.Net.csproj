@@ -9,7 +9,7 @@
 
     <!-- NuGet metadata -->
     <PackageId>Tako0502.EgovHelper</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>Talant</Authors>
     <Company>Talant</Company>
     <Description>Backend companion for @smoker_winston/egov-helper. Verifies CMS / CAdES-BES signatures produced by Kazakhstan e-Gov certificates (NUC RK / pki.gov.kz) and extracts BIN/IIN/owner info from the signing certificate. No NCALayer required on the server side.</Description>
