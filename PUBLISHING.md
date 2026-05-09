@@ -1,6 +1,6 @@
 # Publishing egov-helper
 
-You'll do this once. After that, your teammates run `npm install @atasuai/egov-helper` / `dotnet add package Atasuai.EgovHelper` and it works — no further setup on their end.
+You'll do this once. After that, your teammates run `npm install @tako0502/egov-helper` / `dotnet add package Tako0502.EgovHelper` and it works — no further setup on their end.
 
 There are two paths. Pick the one that matches how open you want this to be.
 
@@ -15,7 +15,7 @@ Free, no auth setup for teammates, anyone in the world can `npm install` it. You
 ```bash
 # from the repo root
 gh auth login                                    # if not already logged in
-gh repo create atasuai/egov-helper \
+gh repo create Tako0502/egov-helper \
     --public \
     --source . \
     --description "KZ e-Gov digital signatures without NCALayer" \
@@ -26,7 +26,7 @@ gh repo create atasuai/egov-helper \
 
 ```bash
 npm adduser                                      # creates an npmjs.com account if needed
-npm org create atasuai                           # claims the @atasuai scope (free for public)
+npm org create tako0502                           # claims the @tako0502 scope (free for public)
 ```
 
 Then create an automation token for CI: <https://www.npmjs.com/settings/[your-username]/tokens> → Generate New Token → "Automation". Copy it.
@@ -38,8 +38,8 @@ gh secret set NPM_TOKEN --body "<paste-the-token>"
 ### A.3 One-time NuGet setup
 
 1. Sign in at <https://www.nuget.org/> (Microsoft account is fine).
-2. Reserve the `Atasuai.*` ID prefix: <https://www.nuget.org/account/Manage> → "Reserved Package ID Prefixes" (optional but worth it).
-3. Generate API key: <https://www.nuget.org/account/apikeys> → "Create" → name `egov-helper publish`, glob pattern `Atasuai.*`. Copy.
+2. Reserve the `Tako0502.*` ID prefix: <https://www.nuget.org/account/Manage> → "Reserved Package ID Prefixes" (optional but worth it).
+3. Generate API key: <https://www.nuget.org/account/apikeys> → "Create" → name `egov-helper publish`, glob pattern `Tako0502.*`. Copy.
 
 ```bash
 gh secret set NUGET_API_KEY --body "<paste-the-key>"
@@ -56,16 +56,16 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Watch the run at `https://github.com/atasuai/egov-helper/actions`. Within ~3 minutes both packages are live.
+Watch the run at `https://github.com/Tako0502/egov-helper/actions`. Within ~3 minutes both packages are live.
 
 ### A.5 Teammates use it
 
 ```bash
 # JS
-npm install @atasuai/egov-helper
+npm install @tako0502/egov-helper
 
 # .NET
-dotnet add package Atasuai.EgovHelper
+dotnet add package Tako0502.EgovHelper
 ```
 
 Zero auth. Done.
@@ -79,7 +79,7 @@ Free if your GitHub org is OK with public repos *or* you're on a paid plan with 
 ### B.1 GitHub setup
 
 ```bash
-gh repo create atasuai/egov-helper \
+gh repo create Tako0502/egov-helper \
     --private \
     --source . \
     --description "KZ e-Gov digital signatures without NCALayer" \
@@ -102,7 +102,7 @@ publish-npm:
       with:
         node-version: '20'
         registry-url: 'https://npm.pkg.github.com'
-        scope: '@atasuai'
+        scope: '@tako0502'
     - run: npm ci
     - run: npm run build
     - run: node scripts/smoke-test.mjs
@@ -116,7 +116,7 @@ And the `publish-nuget` job's push step:
 ```yaml
 - run: dotnet nuget push "./out/*.nupkg" \
     --api-key "${{ secrets.GITHUB_TOKEN }}" \
-    --source "https://nuget.pkg.github.com/atasuai/index.json" \
+    --source "https://nuget.pkg.github.com/tako0502/index.json" \
     --skip-duplicate
 ```
 
@@ -127,7 +127,7 @@ And the `publish-nuget` job's push step:
 In their home folder (`~/.npmrc`), they add:
 
 ```
-@atasuai:registry=https://npm.pkg.github.com
+@tako0502:registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=ghp_xxxxxxxxxxxx
 ```
 
@@ -138,13 +138,13 @@ For .NET (`~/.config/NuGet/NuGet.Config` on macOS / Linux, `%appdata%\NuGet\NuGe
 ```xml
 <configuration>
   <packageSources>
-    <add key="atasuai-github" value="https://nuget.pkg.github.com/atasuai/index.json" />
+    <add key="tako0502-github" value="https://nuget.pkg.github.com/tako0502/index.json" />
   </packageSources>
   <packageSourceCredentials>
-    <atasuai-github>
+    <tako0502-github>
       <add key="Username" value="<their-github-username>" />
       <add key="ClearTextPassword" value="ghp_xxxxxxxxxxxx" />
-    </atasuai-github>
+    </tako0502-github>
   </packageSourceCredentials>
 </configuration>
 ```
@@ -160,15 +160,15 @@ Same as A.4: tag and push, CI does the rest.
 If you want zero registry hassle right now and only have a couple of teammates:
 
 ```bash
-gh repo create atasuai/egov-helper --public --source . --push
+gh repo create Tako0502/egov-helper --public --source . --push
 ```
 
 Teammates skip npm entirely:
 
 ```bash
-npm install git+ssh://git@github.com:atasuai/egov-helper.git
+npm install git+ssh://git@github.com:Tako0502/egov-helper.git
 # or pin to a tag:
-npm install git+ssh://git@github.com:atasuai/egov-helper.git#v0.1.0
+npm install git+ssh://git@github.com:Tako0502/egov-helper.git#v0.1.0
 ```
 
 For this to work over `npm install`, the package builds during install. Add to `package.json`:
@@ -208,7 +208,7 @@ The release workflow takes the version from the tag for the .NET pack step, but 
 
 **`npm publish` says "402 payment required"** — you forgot `--access public` (it's already in `publishConfig`, but if you publish from a different package.json that lacks it, the default for scoped packages is private which requires a paid plan).
 
-**`npm publish` says "403 forbidden"** — either the `@atasuai` scope isn't yours, or the version you're pushing already exists. Run `npm view @atasuai/egov-helper versions` to see what's published.
+**`npm publish` says "403 forbidden"** — either the `@tako0502` scope isn't yours, or the version you're pushing already exists. Run `npm view @tako0502/egov-helper versions` to see what's published.
 
 **`dotnet nuget push` says "duplicate"** — `--skip-duplicate` is already set in the workflow so this is logged as a warning, not a failure. If you want to overwrite, increment the version.
 

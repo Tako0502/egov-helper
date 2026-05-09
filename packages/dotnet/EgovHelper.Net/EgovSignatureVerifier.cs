@@ -5,10 +5,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Atasuai.EgovHelper;
+namespace Tako0502.EgovHelper;
 
 /// <summary>
-/// Verifies CMS / CAdES-BES signatures produced by <c>@atasuai/egov-helper</c>'s
+/// Verifies CMS / CAdES-BES signatures produced by <c>@tako0502/egov-helper</c>'s
 /// <c>signDocument()</c> (or by any other CMS producer — KalkanCrypt, NCALayer, etc.).
 ///
 /// What this checks:

@@ -5,7 +5,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>Atasuai.EgovHelper.Tests</RootNamespace>
+    <RootNamespace>Tako0502.EgovHelper.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 

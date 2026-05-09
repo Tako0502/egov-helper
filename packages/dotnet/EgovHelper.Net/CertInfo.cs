@@ -1,11 +1,11 @@
 using System;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Atasuai.EgovHelper;
+namespace Tako0502.EgovHelper;
 
 /// <summary>
 /// High-level summary of a NUC RK X.509 certificate. Equivalent to the
-/// <c>CertInfo</c> type exported from the <c>@atasuai/egov-helper</c> JS package.
+/// <c>CertInfo</c> type exported from the <c>@tako0502/egov-helper</c> JS package.
 /// </summary>
 public sealed class CertInfo
 {

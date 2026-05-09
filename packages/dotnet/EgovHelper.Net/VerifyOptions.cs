@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Atasuai.EgovHelper;
+namespace Tako0502.EgovHelper;
 
 /// <summary>
 /// Options controlling how strictly <see cref="EgovSignatureVerifier.Verify(byte[], byte[], VerifyOptions)"/>

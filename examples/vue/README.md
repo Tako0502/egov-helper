@@ -1,6 +1,6 @@
 # Vue 3 example
 
-Minimal Vite + Vue 3 + TypeScript app demonstrating all three features of `@atasuai/egov-helper`.
+Minimal Vite + Vue 3 + TypeScript app demonstrating all three features of `@tako0502/egov-helper`.
 
 ## Run it
 
@@ -30,4 +30,4 @@ A single `App.vue` using `<script setup lang="ts">` and the Composition API:
 - Sign → auto-fills the Inspect form so you can decode the same blob round-trip
 - Renders `SignatureInspection` results inline with type-safe template
 
-The library is wired in with a local file dependency (`"@atasuai/egov-helper": "file:../.."`) so any change you make to the library and `npm run build` is picked up automatically by Vite.
+The library is wired in with a local file dependency (`"@tako0502/egov-helper": "file:../.."`) so any change you make to the library and `npm run build` is picked up automatically by Vite.

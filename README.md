@@ -8,7 +8,7 @@ The user picks their NUC RK `.p12` (`.pfx`) file in your form. This library:
 2. **Signs** documents with their key, producing a CAdES-BES (RFC 5126) CMS / PKCS#7 SignedData blob.
 3. **Decodes** any CMS signature — yours or someone else's — into readable fields (signer cert, BIN/IIN, signed time, hash algorithm, attached/detached, signature validity, timestamp presence).
 4. **Timestamps** an existing signature by round-tripping through an RFC 3161 TSA (CAdES-T).
-5. **Verifies on the backend** via the companion .NET package `Atasuai.EgovHelper`.
+5. **Verifies on the backend** via the companion .NET package `Tako0502.EgovHelper`.
 
 The private key from a `.p12` file never leaves the JS runtime that calls these functions.
 
@@ -18,8 +18,8 @@ The private key from a `.p12` file never leaves the JS runtime that calls these 
 
 | Package | Where it runs | What it's for |
 |---|---|---|
-| `@atasuai/egov-helper` (this repo, npm) | browser + Node | sign, inspect, timestamp, BIN/IIN check |
-| `Atasuai.EgovHelper` (`packages/dotnet/`, NuGet) | any .NET 6/8/9/10 backend | verify signatures, validate cert chain against NUC RK roots |
+| `@tako0502/egov-helper` (this repo, npm) | browser + Node | sign, inspect, timestamp, BIN/IIN check |
+| `Tako0502.EgovHelper` (`packages/dotnet/`, NuGet) | any .NET 6/8/9/10 backend | verify signatures, validate cert chain against NUC RK roots |
 
 Each project picks whichever side it needs. iOS / Android can hit the .NET backend over HTTP — they don't need a native helper for the verification half.
 
@@ -30,11 +30,11 @@ Each project picks whichever side it needs. iOS / Android can hit the .NET backe
 ### JS / TS (Vue, React, Node, Razor frontend)
 
 ```bash
-npm install @atasuai/egov-helper
+npm install @tako0502/egov-helper
 ```
 
 ```ts
-import { checkBin, signDocument, inspectSignature, addTimestamp } from '@atasuai/egov-helper';
+import { checkBin, signDocument, inspectSignature, addTimestamp } from '@tako0502/egov-helper';
 ```
 
 ### Single `<script>` for Razor / MVC views
@@ -51,11 +51,11 @@ After `npm run build`, copy `dist/egov-helper.min.js` into your project's static
 ### .NET backend
 
 ```bash
-dotnet add package Atasuai.EgovHelper
+dotnet add package Tako0502.EgovHelper
 ```
 
 ```csharp
-using Atasuai.EgovHelper;
+using Tako0502.EgovHelper;
 var result = EgovSignatureVerifier.Verify(signatureBytes, documentBytes);
 ```
 
@@ -139,7 +139,7 @@ The `documentDigestMatches` field is `null` unless you pass `options.document`. 
 Upgrade a CAdES-BES signature to **CAdES-T** by round-tripping through an RFC 3161 Time Stamping Authority. The TimeStampToken is embedded as an unsigned attribute on the SignerInfo.
 
 ```ts
-import { addTimestamp } from '@atasuai/egov-helper';
+import { addTimestamp } from '@tako0502/egov-helper';
 
 const cmsT = await addTimestamp(sig.signature, {
   tsaUrl: 'https://tsp.pki.gov.kz/tsp',  // KZ TSA
@@ -151,7 +151,7 @@ const cmsT = await addTimestamp(sig.signature, {
 ### 5. Backend verification (.NET)
 
 ```csharp
-using Atasuai.EgovHelper;
+using Tako0502.EgovHelper;
 using System.Linq;
 
 [HttpPost("/api/contracts/sign")]

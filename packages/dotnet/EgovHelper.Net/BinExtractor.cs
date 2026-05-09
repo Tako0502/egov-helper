@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.RegularExpressions;
 
-namespace Atasuai.EgovHelper;
+namespace Tako0502.EgovHelper;
 
 /// <summary>
 /// Pulls a high-level <see cref="CertInfo"/> out of a NUC RK X.509 certificate.

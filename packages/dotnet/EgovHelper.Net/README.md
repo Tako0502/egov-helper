@@ -1,13 +1,13 @@
-# Atasuai.EgovHelper
+# Tako0502.EgovHelper
 
-Backend companion for [`@atasuai/egov-helper`](https://www.npmjs.com/package/@atasuai/egov-helper).
+Backend companion for [`@tako0502/egov-helper`](https://www.npmjs.com/package/@tako0502/egov-helper).
 
 Verifies CMS / CAdES-BES signatures produced by Kazakhstan e-Gov certificates (NUC RK / pki.gov.kz) and extracts BIN/IIN/owner info from the signing certificate. **No NCALayer required on the server side** — pure .NET, uses `System.Security.Cryptography.Pkcs.SignedCms`.
 
 ## Install
 
 ```bash
-dotnet add package Atasuai.EgovHelper
+dotnet add package Tako0502.EgovHelper
 ```
 
 Targets `netstandard2.1` and `net8.0`.
@@ -16,10 +16,10 @@ Targets `netstandard2.1` and `net8.0`.
 
 ### Verify a signature posted from your frontend
 
-The browser uses `@atasuai/egov-helper` to sign a contract and POSTs you the base64 signature (and, for detached signatures, the original document):
+The browser uses `@tako0502/egov-helper` to sign a contract and POSTs you the base64 signature (and, for detached signatures, the original document):
 
 ```csharp
-using Atasuai.EgovHelper;
+using Tako0502.EgovHelper;
 using System.Security.Cryptography.X509Certificates;
 
 [HttpPost("/api/contracts/sign")]

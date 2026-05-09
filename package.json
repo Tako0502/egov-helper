@@ -1,16 +1,16 @@
 {
-  "name": "@atasuai/egov-helper",
+  "name": "@tako0502/egov-helper",
   "version": "0.1.0",
   "description": "Browser-side helper for Kazakhstan e-Gov digital signatures (NUC RK / pki.gov.kz): verify a typed BIN/IIN against a .p12 certificate, sign documents as CAdES-BES, and decode CMS signatures — all without NCALayer.",
-  "homepage": "https://github.com/atasuai/egov-helper#readme",
+  "homepage": "https://github.com/Tako0502/egov-helper#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/atasuai/egov-helper.git"
+    "url": "git+https://github.com/Tako0502/egov-helper.git"
   },
   "bugs": {
-    "url": "https://github.com/atasuai/egov-helper/issues"
+    "url": "https://github.com/Tako0502/egov-helper/issues"
   },
-  "author": "Atasuai",
+  "author": "Talant",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

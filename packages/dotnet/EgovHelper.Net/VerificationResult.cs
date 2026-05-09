@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Atasuai.EgovHelper;
+namespace Tako0502.EgovHelper;
 
 /// <summary>
 /// Outcome of <see cref="EgovSignatureVerifier.Verify(byte[], byte[], VerifyOptions)"/>.

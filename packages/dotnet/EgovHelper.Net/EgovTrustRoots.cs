@@ -5,7 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Atasuai.EgovHelper;
+namespace Tako0502.EgovHelper;
 
 /// <summary>
 /// Trust anchors for NUC RK signature verification.
@@ -29,7 +29,7 @@ public static class EgovTrustRoots
 
     /// <summary>
     /// RSA-only chain (root_rsa_2020 + nca_rsa_2022). This is what you want for the
-    /// signature flow @atasuai/egov-helper produces, since it's RSA-only.
+    /// signature flow @tako0502/egov-helper produces, since it's RSA-only.
     /// </summary>
     public static IReadOnlyList<X509Certificate2> Rsa => GetCached(_rsa);
 
