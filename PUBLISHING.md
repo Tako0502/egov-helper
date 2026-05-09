@@ -1,6 +1,6 @@
 # Publishing egov-helper
 
-You'll do this once. After that, your teammates run `npm install @tako0502/egov-helper` / `dotnet add package Tako0502.EgovHelper` and it works — no further setup on their end.
+You'll do this once. After that, your teammates run `npm install @smoker_winston/egov-helper` / `dotnet add package Tako0502.EgovHelper` and it works — no further setup on their end.
 
 There are two paths. Pick the one that matches how open you want this to be.
 
@@ -26,10 +26,12 @@ gh repo create Tako0502/egov-helper \
 
 ```bash
 npm adduser                                      # creates an npmjs.com account if needed
-npm org create tako0502                           # claims the @tako0502 scope (free for public)
+npm whoami                                       # → smoker_winston
 ```
 
-Then create an automation token for CI: <https://www.npmjs.com/settings/[your-username]/tokens> → Generate New Token → "Automation". Copy it.
+Every npm user automatically gets a personal scope matching their username, so you can publish under `@smoker_winston/egov-helper` immediately — no `npm org create` step needed.
+
+Then create an automation token for CI: <https://www.npmjs.com/settings/smoker_winston/tokens> → Generate New Token → "Automation". Copy it.
 
 ```bash
 gh secret set NPM_TOKEN --body "<paste-the-token>"
@@ -62,7 +64,7 @@ Watch the run at `https://github.com/Tako0502/egov-helper/actions`. Within ~3 mi
 
 ```bash
 # JS
-npm install @tako0502/egov-helper
+npm install @smoker_winston/egov-helper
 
 # .NET
 dotnet add package Tako0502.EgovHelper
@@ -76,6 +78,8 @@ Zero auth. Done.
 
 Free if your GitHub org is OK with public repos *or* you're on a paid plan with private repos. Code stays closed; teammates need a Personal Access Token to install.
 
+> **Heads up — the scope changes.** GitHub Packages requires the npm scope to match the GitHub username/org, so under Path B the package becomes `@tako0502/egov-helper` (not `@smoker_winston/...` like on public npm). Pick one path and stick with it; mixing them confuses teammates.
+
 ### B.1 GitHub setup
 
 ```bash
@@ -86,7 +90,11 @@ gh repo create Tako0502/egov-helper \
     --push
 ```
 
-### B.2 Reconfigure the release workflow for GitHub Packages
+### B.2 Switch the package name to your GitHub scope
+
+In `package.json`, change the `name` field from `@smoker_winston/egov-helper` to `@tako0502/egov-helper`. (GitHub Packages refuses to publish a package whose scope doesn't match the GitHub user/org.)
+
+### B.3 Reconfigure the release workflow for GitHub Packages
 
 Replace the `publish-npm` job in `.github/workflows/release.yml` with:
 
@@ -122,7 +130,7 @@ And the `publish-nuget` job's push step:
 
 `GITHUB_TOKEN` is auto-injected — no secret to set.
 
-### B.3 Teammates need a one-time `.npmrc`
+### B.4 Teammates need a one-time `.npmrc`
 
 In their home folder (`~/.npmrc`), they add:
 
@@ -149,7 +157,7 @@ For .NET (`~/.config/NuGet/NuGet.Config` on macOS / Linux, `%appdata%\NuGet\NuGe
 </configuration>
 ```
 
-### B.4 Cut a release
+### B.5 Cut a release
 
 Same as A.4: tag and push, CI does the rest.
 
@@ -208,7 +216,7 @@ The release workflow takes the version from the tag for the .NET pack step, but 
 
 **`npm publish` says "402 payment required"** — you forgot `--access public` (it's already in `publishConfig`, but if you publish from a different package.json that lacks it, the default for scoped packages is private which requires a paid plan).
 
-**`npm publish` says "403 forbidden"** — either the `@tako0502` scope isn't yours, or the version you're pushing already exists. Run `npm view @tako0502/egov-helper versions` to see what's published.
+**`npm publish` says "403 forbidden"** — either the `@smoker_winston` scope isn't yours (run `npm whoami` to confirm you're logged in as `smoker_winston`), or the version you're pushing already exists. Run `npm view @smoker_winston/egov-helper versions` to see what's published.
 
 **`dotnet nuget push` says "duplicate"** — `--skip-duplicate` is already set in the workflow so this is logged as a warning, not a failure. If you want to overwrite, increment the version.
 

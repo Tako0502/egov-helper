@@ -1,6 +1,6 @@
 # Tako0502.EgovHelper
 
-Backend companion for [`@tako0502/egov-helper`](https://www.npmjs.com/package/@tako0502/egov-helper).
+Backend companion for [`@smoker_winston/egov-helper`](https://www.npmjs.com/package/@smoker_winston/egov-helper).
 
 Verifies CMS / CAdES-BES signatures produced by Kazakhstan e-Gov certificates (NUC RK / pki.gov.kz) and extracts BIN/IIN/owner info from the signing certificate. **No NCALayer required on the server side** — pure .NET, uses `System.Security.Cryptography.Pkcs.SignedCms`.
 
@@ -16,7 +16,7 @@ Targets `netstandard2.1` and `net8.0`.
 
 ### Verify a signature posted from your frontend
 
-The browser uses `@tako0502/egov-helper` to sign a contract and POSTs you the base64 signature (and, for detached signatures, the original document):
+The browser uses `@smoker_winston/egov-helper` to sign a contract and POSTs you the base64 signature (and, for detached signatures, the original document):
 
 ```csharp
 using Tako0502.EgovHelper;

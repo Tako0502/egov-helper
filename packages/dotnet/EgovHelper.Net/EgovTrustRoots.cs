@@ -29,7 +29,7 @@ public static class EgovTrustRoots
 
     /// <summary>
     /// RSA-only chain (root_rsa_2020 + nca_rsa_2022). This is what you want for the
-    /// signature flow @tako0502/egov-helper produces, since it's RSA-only.
+    /// signature flow @smoker_winston/egov-helper produces, since it's RSA-only.
     /// </summary>
     public static IReadOnlyList<X509Certificate2> Rsa => GetCached(_rsa);
 

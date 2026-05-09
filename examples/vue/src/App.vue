@@ -7,7 +7,7 @@ import {
   type CheckBinResult,
   type SignResult,
   type SignatureInspection,
-} from '@tako0502/egov-helper';
+} from '@smoker_winston/egov-helper';
 
 // ── Form 1: BIN check ─────────────────────────────────────────────────────
 const binFile = ref<File | null>(null);

@@ -18,7 +18,7 @@ The private key from a `.p12` file never leaves the JS runtime that calls these 
 
 | Package | Where it runs | What it's for |
 |---|---|---|
-| `@tako0502/egov-helper` (this repo, npm) | browser + Node | sign, inspect, timestamp, BIN/IIN check |
+| `@smoker_winston/egov-helper` (this repo, npm) | browser + Node | sign, inspect, timestamp, BIN/IIN check |
 | `Tako0502.EgovHelper` (`packages/dotnet/`, NuGet) | any .NET 6/8/9/10 backend | verify signatures, validate cert chain against NUC RK roots |
 
 Each project picks whichever side it needs. iOS / Android can hit the .NET backend over HTTP — they don't need a native helper for the verification half.
@@ -30,11 +30,11 @@ Each project picks whichever side it needs. iOS / Android can hit the .NET backe
 ### JS / TS (Vue, React, Node, Razor frontend)
 
 ```bash
-npm install @tako0502/egov-helper
+npm install @smoker_winston/egov-helper
 ```
 
 ```ts
-import { checkBin, signDocument, inspectSignature, addTimestamp } from '@tako0502/egov-helper';
+import { checkBin, signDocument, inspectSignature, addTimestamp } from '@smoker_winston/egov-helper';
 ```
 
 ### Single `<script>` for Razor / MVC views
@@ -139,7 +139,7 @@ The `documentDigestMatches` field is `null` unless you pass `options.document`. 
 Upgrade a CAdES-BES signature to **CAdES-T** by round-tripping through an RFC 3161 Time Stamping Authority. The TimeStampToken is embedded as an unsigned attribute on the SignerInfo.
 
 ```ts
-import { addTimestamp } from '@tako0502/egov-helper';
+import { addTimestamp } from '@smoker_winston/egov-helper';
 
 const cmsT = await addTimestamp(sig.signature, {
   tsaUrl: 'https://tsp.pki.gov.kz/tsp',  // KZ TSA

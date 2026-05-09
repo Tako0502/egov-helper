@@ -1,5 +1,5 @@
 /**
- * @tako0502/egov-helper
+ * @smoker_winston/egov-helper
  *
  * Browser-side helper for Kazakhstan e-Gov digital signatures, without NCALayer.
  *

@@ -12,7 +12,7 @@
     <Version>0.1.0</Version>
     <Authors>Talant</Authors>
     <Company>Talant</Company>
-    <Description>Backend companion for @tako0502/egov-helper. Verifies CMS / CAdES-BES signatures produced by Kazakhstan e-Gov certificates (NUC RK / pki.gov.kz) and extracts BIN/IIN/owner info from the signing certificate. No NCALayer required on the server side.</Description>
+    <Description>Backend companion for @smoker_winston/egov-helper. Verifies CMS / CAdES-BES signatures produced by Kazakhstan e-Gov certificates (NUC RK / pki.gov.kz) and extracts BIN/IIN/owner info from the signing certificate. No NCALayer required on the server side.</Description>
     <PackageTags>egov;egov.kz;kazakhstan;pki;ncalayer;kalkan;cms;cades;digital-signature;bin;iin</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/Tako0502/egov-helper</PackageProjectUrl>

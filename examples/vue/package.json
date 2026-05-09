@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tako0502/egov-helper": "file:../..",
+    "@smoker_winston/egov-helper": "file:../..",
     "vue": "^3.4.0"
   },
   "devDependencies": {
