@@ -1,0 +1,73 @@
+{
+  "name": "@atasuai/egov-helper",
+  "version": "0.1.0",
+  "description": "Browser-side helper for Kazakhstan e-Gov digital signatures (NUC RK / pki.gov.kz): verify a typed BIN/IIN against a .p12 certificate, sign documents as CAdES-BES, and decode CMS signatures — all without NCALayer.",
+  "homepage": "https://github.com/atasuai/egov-helper#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atasuai/egov-helper.git"
+  },
+  "bugs": {
+    "url": "https://github.com/atasuai/egov-helper/issues"
+  },
+  "author": "Atasuai",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./bundle": "./dist/egov-helper.min.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node scripts/smoke-test.mjs",
+    "demo": "npm run build && npx --yes serve examples/plain-html -l 5173",
+    "prepublishOnly": "npm run typecheck && npm run build && node scripts/smoke-test.mjs"
+  },
+  "dependencies": {
+    "node-forge": "^1.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/node-forge": "^1.3.11",
+    "tsup": "^8.0.2",
+    "typescript": "^5.4.5"
+  },
+  "keywords": [
+    "egov",
+    "egov.kz",
+    "kazakhstan",
+    "pki",
+    "kalkan",
+    "ncalayer",
+    "ncalayer-alternative",
+    "digital-signature",
+    "p12",
+    "pkcs12",
+    "bin",
+    "iin",
+    "cades",
+    "cms",
+    "pkcs7"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

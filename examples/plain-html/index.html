@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>egov-helper demo</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        max-width: 760px;
+        margin: 32px auto;
+        padding: 0 16px;
+        line-height: 1.5;
+      }
+      h1 { margin: 0 0 4px; }
+      .sub { color: #666; margin: 0 0 24px; }
+      section {
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin: 16px 0;
+      }
+      h2 { margin-top: 0; }
+      label { display: block; margin: 8px 0 4px; font-size: 14px; }
+      input[type=text], input[type=password], input[type=file], textarea {
+        width: 100%;
+        padding: 8px;
+        font-size: 14px;
+        box-sizing: border-box;
+        font-family: inherit;
+      }
+      textarea { min-height: 90px; resize: vertical; }
+      button {
+        margin-top: 12px;
+        padding: 8px 16px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 12px;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      @media (prefers-color-scheme: dark) {
+        section { border-color: #444; }
+        pre { background: #222; }
+      }
+      .ok { color: #2a7a2a; font-weight: bold; }
+      .bad { color: #a52a2a; font-weight: bold; }
+      .row { display: flex; gap: 12px; align-items: flex-end; }
+      .row > * { flex: 1; }
+    </style>
+  </head>
+  <body>
+    <h1>egov-helper demo</h1>
+    <p class="sub">Test the helper functions against a real NUC RK .p12 file. Nothing is uploaded — it all runs in your browser.</p>
+
+    <section>
+      <h2>1. Check BIN / IIN match</h2>
+      <label>Certificate (.p12 / .pfx)</label>
+      <input type="file" id="bin-p12" accept=".p12,.pfx" />
+      <label>Password</label>
+      <input type="password" id="bin-pass" autocomplete="off" />
+      <label>BIN or IIN you want to verify (12 digits)</label>
+      <input type="text" id="bin-typed" inputmode="numeric" maxlength="12" />
+      <button id="bin-go">Check</button>
+      <pre id="bin-out">(no result yet)</pre>
+    </section>
+
+    <section>
+      <h2>2. Sign a document (CAdES-BES)</h2>
+      <label>Certificate (.p12 / .pfx)</label>
+      <input type="file" id="sign-p12" accept=".p12,.pfx" />
+      <label>Password</label>
+      <input type="password" id="sign-pass" autocomplete="off" />
+      <label>Document to sign (any file)</label>
+      <input type="file" id="sign-doc" />
+      <button id="sign-go">Sign (detached, SHA-256)</button>
+      <pre id="sign-out">(no result yet)</pre>
+    </section>
+
+    <section>
+      <h2>3. Inspect a signature (decode CMS / base64)</h2>
+      <p class="sub" style="margin-top:0">
+        Paste the base64 from step 2 (or any CMS signature you got from elsewhere) to see what's actually inside.
+      </p>
+      <label>Signature (base64 or hex)</label>
+      <textarea id="insp-sig" placeholder="MIIH... (base64 CMS)"></textarea>
+      <label>Optional: original document (for detached signatures, to verify the digest)</label>
+      <input type="file" id="insp-doc" />
+      <button id="insp-go">Inspect</button>
+      <pre id="insp-out">(no result yet)</pre>
+    </section>
+
+    <p class="sub">
+      Run <code>npm install &amp;&amp; npm run build</code> in the project root first so that
+      <code>../../dist/egov-helper.min.js</code> exists, then open this file (or <code>npm run demo</code>).
+    </p>
+
+    <script src="../../dist/egov-helper.min.js"></script>
+    <script>
+      const { checkBin, signDocument, inspectSignature } = window.EgovHelper;
+
+      function show(el, value) {
+        el.textContent = typeof value === 'string'
+          ? value
+          : JSON.stringify(value, (_k, v) => {
+              if (v instanceof Uint8Array) return `<${v.length} bytes>`;
+              if (v instanceof Date) return v.toISOString();
+              return v;
+            }, 2);
+      }
+
+      document.getElementById('bin-go').addEventListener('click', async () => {
+        const out = document.getElementById('bin-out');
+        try {
+          const file = document.getElementById('bin-p12').files[0];
+          const pass = document.getElementById('bin-pass').value;
+          const typed = document.getElementById('bin-typed').value;
+          if (!file) { show(out, 'Pick a .p12 file first'); return; }
+          out.textContent = 'Checking…';
+          const r = await checkBin(file, pass, typed);
+          out.innerHTML =
+            (r.match
+              ? `<span class="ok">MATCH</span> (matched ${r.matchedField})\n\n`
+              : `<span class="bad">NO MATCH</span>\n\n`) +
+            JSON.stringify(r, null, 2);
+        } catch (e) {
+          show(out, 'Error: ' + e.message);
+        }
+      });
+
+      let lastSignatureBase64 = null;
+
+      document.getElementById('sign-go').addEventListener('click', async () => {
+        const out = document.getElementById('sign-out');
+        try {
+          const file = document.getElementById('sign-p12').files[0];
+          const pass = document.getElementById('sign-pass').value;
+          const doc = document.getElementById('sign-doc').files[0];
+          if (!file || !doc) { show(out, 'Pick both a .p12 and a document to sign'); return; }
+          out.textContent = 'Signing…';
+          const docBytes = new Uint8Array(await doc.arrayBuffer());
+          const r = await signDocument(file, pass, docBytes);
+          lastSignatureBase64 = r.signatureBase64;
+          // Auto-fill the inspect section so the user can immediately try it
+          document.getElementById('insp-sig').value = r.signatureBase64;
+          show(out, {
+            ...r,
+            signature: `<${r.signature.length} bytes>`,
+            signatureBase64: r.signatureBase64.slice(0, 80) + '… (full value copied to inspect section below)',
+          });
+        } catch (e) {
+          show(out, 'Error: ' + e.message);
+        }
+      });
+
+      document.getElementById('insp-go').addEventListener('click', async () => {
+        const out = document.getElementById('insp-out');
+        try {
+          const sig = document.getElementById('insp-sig').value.trim();
+          if (!sig) { show(out, 'Paste a base64 or hex signature first'); return; }
+          const docFile = document.getElementById('insp-doc').files[0];
+          const opts = {};
+          if (docFile) opts.document = new Uint8Array(await docFile.arrayBuffer());
+          out.textContent = 'Decoding…';
+          const r = await inspectSignature(sig, opts);
+          out.innerHTML = signatureSummary(r) + JSON.stringify(r, (_k, v) => {
+            if (v instanceof Uint8Array) return `<${v.length} bytes>`;
+            if (v instanceof Date) return v.toISOString();
+            return v;
+          }, 2);
+        } catch (e) {
+          show(out, 'Error: ' + e.message);
+        }
+      });
+
+      function signatureSummary(r) {
+        const s = r.signers[0];
+        if (!s) return '<span class="bad">No signers found in CMS</span>\n\n';
+        const lines = [];
+        lines.push(`Signed by: <b>${escapeHtml(s.certInfo.commonName ?? '(no CN)')}</b>`);
+        if (s.certInfo.bin) lines.push(`BIN: ${s.certInfo.bin}`);
+        if (s.certInfo.iin) lines.push(`IIN: ${s.certInfo.iin}`);
+        if (s.signedAt) lines.push(`Signed at: ${s.signedAt.toISOString()}`);
+        lines.push(`Hash: ${s.hashAlgorithm}`);
+        lines.push(`Detached: ${!r.attached}`);
+        lines.push(`CAdES-BES (signingCertificateV2): ${s.hasSigningCertificateV2 ? '<span class="ok">yes</span>' : '<span class="bad">no</span>'}`);
+        lines.push(`CAdES-T (timestamp): ${r.hasTimestamp ? '<span class="ok">yes — ' + (r.timestampAt?.toISOString() ?? '') + '</span>' : 'no'}`);
+        lines.push(`Signature value verifies against embedded cert: ${s.signatureValid ? '<span class="ok">yes</span>' : '<span class="bad">no</span>'}`);
+        if (r.documentDigestMatches !== null) {
+          lines.push(`Document digest matches: ${r.documentDigestMatches ? '<span class="ok">yes</span>' : '<span class="bad">NO — wrong document or tampered</span>'}`);
+        }
+        return lines.join('\n') + '\n\n';
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      }
+    </script>
+  </body>
+</html>

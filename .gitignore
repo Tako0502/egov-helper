@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.vscode/
+.idea/
+*.tsbuildinfo
+
+# Never commit real test keys / passwords
+*.p12
+*.pfx
+*.pem
+*.key
+test-keys/
+secrets/
+tmp/
+bin/
+obj/

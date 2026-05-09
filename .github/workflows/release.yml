@@ -1,0 +1,59 @@
+name: Release
+
+# Push a tag like `v0.2.0` to publish both packages.
+#
+# Required repo secrets (set under Settings → Secrets and variables → Actions):
+#   NPM_TOKEN      — npm Automation token from https://www.npmjs.com/settings/<your-user>/tokens
+#   NUGET_API_KEY  — NuGet API key from https://www.nuget.org/account/apikeys
+#
+# If you'd rather use GitHub Packages instead of public npm/NuGet, swap the registry-url
+# below to `https://npm.pkg.github.com` and use `GITHUB_TOKEN` (auto-provided, no secret to set).
+# See PUBLISHING.md for the full GitHub Packages variant.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # for npm provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: node scripts/smoke-test.mjs
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-nuget:
+    name: Publish to NuGet
+    runs-on: ubuntu-latest
+    needs: publish-npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+      - name: Sync version from tag
+        run: |
+          # Strip the leading 'v' off the tag (v0.2.0 → 0.2.0) and write it into the csproj
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Publishing version $VERSION"
+          sed -i "s|<Version>.*</Version>|<Version>${VERSION}</Version>|" \
+            packages/dotnet/EgovHelper.Net/EgovHelper.Net.csproj
+      - run: dotnet pack -c Release packages/dotnet/EgovHelper.Net -o ./out
+      - run: dotnet nuget push "./out/*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - run: dotnet nuget push "./out/*.snupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate

@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.1;net8.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- NuGet metadata -->
+    <PackageId>Atasuai.EgovHelper</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Atasuai</Authors>
+    <Company>Atasuai</Company>
+    <Description>Backend companion for @atasuai/egov-helper. Verifies CMS / CAdES-BES signatures produced by Kazakhstan e-Gov certificates (NUC RK / pki.gov.kz) and extracts BIN/IIN/owner info from the signing certificate. No NCALayer required on the server side.</Description>
+    <PackageTags>egov;egov.kz;kazakhstan;pki;ncalayer;kalkan;cms;cades;digital-signature;bin;iin</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/atasuai/egov-helper</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/atasuai/egov-helper</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- NUC RK root + intermediate CA certificates (downloaded from pki.gov.kz on 2026-05-09).
+       Refresh with `scripts/fetch-nuc-roots.sh` if pki.gov.kz publishes new ones. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\root_rsa_2020.cer" />
+    <EmbeddedResource Include="Resources\nca_rsa_2022.cer" />
+    <EmbeddedResource Include="Resources\root_gost_2022.cer" />
+    <EmbeddedResource Include="Resources\nca_gost_2022.cer" />
+  </ItemGroup>
+
+  <!-- Pkcs is in-box on net6+ but needs an explicit ref for the type to resolve cleanly,
+       and is required entirely on netstandard2.1. -->
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

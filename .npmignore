@@ -1,0 +1,29 @@
+# Whatever isn't listed in package.json's "files" array is ignored anyway,
+# but having an explicit .npmignore makes accidents harder.
+
+# Source — only ship the built `dist/`
+src/
+tsconfig.json
+tsup.config.ts
+
+# Tests, scripts, examples, dotnet — none of these belong in the npm tarball
+scripts/
+examples/
+packages/
+tmp/
+
+# Dev junk
+.github/
+.vscode/
+.idea/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Real keys must never ship
+*.p12
+*.pfx
+*.pem
+*.key
+test-keys/
+secrets/

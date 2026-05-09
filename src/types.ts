@@ -1,0 +1,148 @@
+/**
+ * Accepted forms for a PKCS#12 (.p12 / .pfx) file.
+ * - File: from a browser <input type="file">
+ * - ArrayBuffer / Uint8Array: from fetch(), Blob.arrayBuffer(), Node fs.readFile, etc.
+ */
+export type P12Input = File | ArrayBuffer | Uint8Array;
+
+/**
+ * What was extracted from the certificate inside a NUC RK .p12 file.
+ *
+ * KZ certificates put the BIN/IIN in either:
+ *   - subject SERIALNUMBER (OID 2.5.4.5), e.g. "IIN123456789012"
+ *   - subject OU (OID 2.5.4.11), e.g. "BIN123456789012"
+ *
+ * Natural-person certs (AUTH_RSA / RSA personal) carry an IIN.
+ * Legal-entity certs (organization certs) carry a BIN (and usually also an IIN of the responsible person).
+ */
+export interface CertInfo {
+  /** 12-digit BIN of the legal entity, or null if not present */
+  bin: string | null;
+  /** 12-digit IIN of the natural person, or null if not present */
+  iin: string | null;
+  /** Common Name (CN) — usually the owner's full name in cyrillic */
+  commonName: string | null;
+  /** Surname (SN / OID 2.5.4.4) */
+  surname: string | null;
+  /** Given name (GN / OID 2.5.4.42) */
+  givenName: string | null;
+  /** Organization (O) — present on legal-entity certs */
+  organization: string | null;
+  /** Email address embedded in the subject, if any */
+  email: string | null;
+  /** Best-effort detection: "AUTH" (authentication-only) or "SIGN" (document-signing) cert */
+  keyUsage: 'AUTH' | 'SIGN' | 'UNKNOWN';
+  /** Certificate validity start */
+  validFrom: Date;
+  /** Certificate validity end */
+  validTo: Date;
+  /** Certificate serial number (the cert's own serial, not the BIN/IIN) as a hex string */
+  serialNumberHex: string;
+  /** PEM-encoded certificate, useful for sending to a backend for verification */
+  certificatePem: string;
+}
+
+export interface CheckBinResult {
+  /** True if the typed value matches either the certificate's BIN or IIN */
+  match: boolean;
+  /** BIN extracted from the certificate, or null */
+  certBin: string | null;
+  /** IIN extracted from the certificate, or null */
+  certIin: string | null;
+  /** Which field the typed value matched against, or null if no match */
+  matchedField: 'BIN' | 'IIN' | null;
+  /** Full info about the certificate so callers can show owner name, organization, expiry, etc. */
+  certInfo: CertInfo;
+}
+
+export interface SignOptions {
+  /**
+   * If true (default), produces a detached signature: the document content is NOT embedded
+   * in the signature. The verifier must be given both the original document and the signature.
+   *
+   * If false, produces an attached signature: the document content is embedded inside the
+   * CMS structure. The verifier needs only the signature blob.
+   */
+  detached?: boolean;
+  /**
+   * Hash algorithm used for both the message digest and signing. Default: SHA-256.
+   * KalkanCrypt and most KZ verification services accept SHA-256 / SHA-384 / SHA-512.
+   */
+  hashAlgorithm?: 'SHA-256' | 'SHA-384' | 'SHA-512';
+}
+
+export interface SignResult {
+  /** CMS / PKCS#7 SignedData (DER-encoded). This is what KalkanCrypt verifies. */
+  signature: Uint8Array;
+  /** Same bytes, base64-encoded — ready to send over JSON/HTTP */
+  signatureBase64: string;
+  /** Local timestamp included as a signed attribute (signingTime) */
+  signedAt: Date;
+  /** Whether the signature is detached (true) or attached (false) */
+  detached: boolean;
+  /** Info about the certificate that was used to sign */
+  certInfo: CertInfo;
+}
+
+/**
+ * Per-signer fields extracted by inspectSignature().
+ * (CMS allows multiple signers; in NUC RK practice there's almost always just one.)
+ */
+export interface SignerInspection {
+  /** Decoded info from the signer's certificate */
+  certInfo: CertInfo;
+  /** Time from the signingTime authenticated attribute, if present */
+  signedAt: Date | null;
+  /** Hash of the original document, base64. Compare against your own SHA-X(doc) to confirm. */
+  messageDigestBase64: string | null;
+  /** Hash algorithm declared in the SignerInfo, e.g. "SHA-256" */
+  hashAlgorithm: string;
+  /** True if the CAdES-BES "signingCertificateV2" (ESS, RFC 5035) attribute is present */
+  hasSigningCertificateV2: boolean;
+  /**
+   * Whether the signer's RSA signature value verifies against the embedded certificate's
+   * public key. This proves the signed attributes were not tampered with by anyone who
+   * doesn't hold the private key. It does NOT prove:
+   *   - the certificate is trusted (chain validation against NUC roots — do that on your backend)
+   *   - the messageDigest in signedAttrs matches your original document
+   *     (call inspectSignature with { document } to also verify that)
+   */
+  signatureValid: boolean;
+}
+
+export interface SignatureInspection {
+  /** True if the document content is embedded in the CMS (attached); false if detached */
+  attached: boolean;
+  /** If attached, the embedded document bytes; otherwise null */
+  embeddedContent: Uint8Array | null;
+  /** Per-signer information (usually one entry) */
+  signers: SignerInspection[];
+  /** True if the CMS contains a TimeStampToken in unsigned attributes (CAdES-T) */
+  hasTimestamp: boolean;
+  /** The TSA-claimed time, if a timestamp is present and parseable */
+  timestampAt: Date | null;
+  /** True if you provided `options.document` and its SHA-X matches the signed messageDigest */
+  documentDigestMatches: boolean | null;
+}
+
+export interface InspectOptions {
+  /**
+   * Optional original document bytes (only useful for detached signatures).
+   * If provided, inspectSignature also verifies that SHA-X(document) equals the messageDigest
+   * in the signed attributes — i.e. proof that this signature is for THIS document.
+   */
+  document?: ArrayBuffer | Uint8Array | string;
+}
+
+export interface TimestampOptions {
+  /**
+   * URL of an RFC 3161 Time Stamping Authority. KZ TSA is at https://tsp.pki.gov.kz/tsp.
+   * Public TSAs do not send CORS headers, so this typically must be called from a Node
+   * backend or via a server-side proxy you control.
+   */
+  tsaUrl: string;
+  /** Hash algorithm for the TSP request. Default: SHA-256. */
+  hashAlgorithm?: 'SHA-256' | 'SHA-384' | 'SHA-512';
+  /** Optional fetch options (headers, signal, etc.) — passed through to fetch() */
+  fetchInit?: RequestInit;
+}
