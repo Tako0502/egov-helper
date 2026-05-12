@@ -1,0 +1,38 @@
+# Root-level docker-compose for the whole repo.
+#
+# Brings up the Kalkan-backed Java signing service on http://localhost:7676.
+# Requires that you've dropped the real Kalkan JARs into
+# packages/java/egov-helper-signer/libs/ — see HOW-TO-USE.md.
+#
+# Usage:
+#   docker compose up --build      # foreground, logs to stdout
+#   docker compose up -d --build   # background
+#   docker compose logs -f          # follow logs
+#   docker compose down             # stop
+#
+# To use against a real frontend, point the consumer's `backendUrl` at
+# http://localhost:7676 (or wherever you deploy this).
+
+services:
+  egov-signer:
+    build:
+      context: ./packages/java/egov-helper-signer
+      dockerfile: Dockerfile
+    image: egov-helper-signer:0.3.0
+    container_name: egov-signer
+    ports:
+      - "7676:7676"
+    environment:
+      # Tighten this to your real frontend origin in production.
+      ALLOWED_ORIGIN: "*"
+      MAX_BODY_MB: "32"
+      # Turn on when behind a TLS terminator that sets X-Forwarded-Proto.
+      REQUIRE_HTTPS: "false"
+      DEBUG_DUMP_REQS: "false"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7676/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

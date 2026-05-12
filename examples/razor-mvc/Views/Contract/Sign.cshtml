@@ -1,0 +1,126 @@
+@*
+    Drop into Views/Contract/Sign.cshtml in your real project.
+
+    The Razor renders the contract text + form. The script tag at the bottom loads the
+    standalone IIFE bundle from wwwroot/lib/egov-helper.min.js (exposes window.EgovHelper).
+    The user picks .p12 + password + types their BIN, JS calls the Kalkan signer service
+    over HTTPS, then POSTs the resulting CMS to /Contract/Sign for verification + storage.
+
+    Anti-forgery: this view uses @Html.AntiForgeryToken() and the JS adds the header
+    on POST. Make sure your Startup.cs registers IAntiforgery / app.UseAntiforgery().
+*@
+
+@{
+    ViewData["Title"] = "Sign contract";
+    var contractId   = (int)    ViewBag.ContractId;
+    var contractText = (string) ViewBag.ContractText;
+    var backendUrl   = (string) ViewBag.BackendUrl;
+}
+
+<h1>Sign contract #@contractId</h1>
+
+<section class="contract-body">
+    <h3>Contract terms</h3>
+    <pre id="contract-text">@contractText</pre>
+</section>
+
+<form id="sign-form">
+    @Html.AntiForgeryToken()
+
+    <label>Your BIN (for confirmation)</label>
+    <input type="text" id="bin" inputmode="numeric" maxlength="12" required />
+
+    <label>Certificate (.p12 / .pfx)</label>
+    <input type="file" id="p12" accept=".p12,.pfx" required />
+
+    <label>Password</label>
+    <input type="password" id="password" autocomplete="off" required />
+
+    <button type="submit" id="sign-btn">Sign contract</button>
+    <p id="status" class="status"></p>
+</form>
+
+@section Scripts {
+    <script src="~/lib/egov-helper.min.js" asp-append-version="true"></script>
+    <script>
+      (function () {
+        const { checkBin, signDocument } = window.EgovHelper;
+
+        // Backend URL of the Kalkan signing service. In production set this to your real
+        // signer host (e.g. https://signer.atasuai.kz).
+        const BACKEND_URL = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(backendUrl));
+        const CONTRACT_ID = @contractId;
+        const CONTRACT_TEXT = document.getElementById('contract-text').textContent ?? '';
+
+        const $ = (id) => document.getElementById(id);
+        const setStatus = (msg, cls) => {
+          const s = $('status');
+          s.textContent = msg;
+          s.className = 'status ' + (cls || '');
+        };
+
+        $('sign-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          $('sign-btn').disabled = true;
+          setStatus('Validating BIN…');
+
+          const p12   = $('p12').files[0];
+          const pwd   = $('password').value;
+          const bin   = $('bin').value;
+
+          try {
+            // 1) Confirm the .p12 actually belongs to the BIN the user typed. Saves
+            //    a wasted sign call if they uploaded the wrong key.
+            const check = await checkBin(p12, pwd, bin, { backendUrl: BACKEND_URL });
+            if (!check.match) {
+              throw new Error(`That .p12 is for BIN ${check.certBin ?? '—'}, not ${bin}.`);
+            }
+
+            // 2) Sign the exact bytes of the contract text shown above. These bytes
+            //    must match what your server uses to verify — keep encoding consistent.
+            setStatus('Signing…');
+            const docBytes = new TextEncoder().encode(CONTRACT_TEXT);
+            const sig = await signDocument(p12, pwd, docBytes, { backendUrl: BACKEND_URL });
+
+            // 3) Ship the CMS to your server for verification + storage.
+            setStatus('Submitting…');
+            const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            const resp = await fetch('/Contract/Sign', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': token,
+              },
+              body: JSON.stringify({
+                contractId: CONTRACT_ID,
+                signatureBase64: sig.signatureBase64,
+                expectedBin: bin,
+              }),
+            });
+
+            if (!resp.ok) {
+              const err = await resp.json().catch(() => ({}));
+              throw new Error(err.error ?? `Server returned HTTP ${resp.status}`);
+            }
+            const ok = await resp.json();
+            setStatus(`✓ Signed by ${ok.signer} (BIN ${ok.bin}) at ${ok.signedAt}`, 'ok');
+          } catch (err) {
+            setStatus('✗ ' + err.message, 'bad');
+          } finally {
+            $('sign-btn').disabled = false;
+          }
+        });
+      })();
+    </script>
+    <style>
+      .contract-body pre {
+        background: #f4f4f4; padding: 12px; border-radius: 6px;
+        white-space: pre-wrap; word-break: break-word;
+      }
+      form label { display: block; margin: 12px 0 4px; font-size: 13px; color: #666; }
+      form input { width: 100%; max-width: 480px; padding: 8px; box-sizing: border-box; }
+      button { margin-top: 16px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+      .status.ok  { color: #2a7a2a; font-weight: bold; }
+      .status.bad { color: #a52a2a; }
+    </style>
+}

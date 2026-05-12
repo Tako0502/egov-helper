@@ -1,0 +1,216 @@
+openapi: 3.1.0
+info:
+  title: egov-helper-signer
+  version: 0.3.0
+  description: |
+    HTTP wire protocol of the Kalkan-backed signing service in `packages/java/egov-helper-signer/`.
+
+    Implement a client in any language by following this spec — the official `@smoker_winston/egov-helper`
+    npm package is one such client (TypeScript / browser + Node).
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:7676
+    description: Local development
+  - url: https://signer.example.kz
+    description: Example production deployment behind a TLS terminator
+
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      description: Returns 200 once the service is ready to accept signing requests. Use for orchestrator health checks.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                ok: true
+                kalkan: KALKAN/0.7
+
+  /sign:
+    post:
+      summary: Sign a document
+      description: |
+        Load the `.p12`, find the signer's private key, sign the document, return a
+        CAdES-BES CMS / PKCS#7 SignedData blob (base64). Works for RSA and GOST keys.
+
+        The `.p12` bytes and password live in server memory **only** for the lifetime of
+        this request. Nothing is logged, nothing is persisted.
+      operationId: sign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignRequest'
+      responses:
+        '200':
+          description: Signature produced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignResponse'
+        '400':
+          description: Bad request — wrong password, malformed input, unsupported algorithm
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                wrongPassword:
+                  value:
+                    error: Wrong password or corrupted PKCS#12 file
+                missingField:
+                  value:
+                    error: 'Missing one of: p12Base64, password, documentBase64'
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: internal error during signing
+
+  /info:
+    post:
+      summary: Extract cert info (no signing)
+      description: |
+        Load the `.p12` and return just the parsed certificate info — useful for the BIN /
+        IIN match check before committing to a signing flow. Accepts the same body shape as
+        `/sign` for protocol uniformity; the document fields (`documentBase64`, `detached`,
+        `hashAlgorithm`) are ignored.
+
+        Same in-memory-only handling as `/sign` — `.p12` and password are discarded after
+        the response is sent.
+      operationId: info
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignRequest'
+      responses:
+        '200':
+          description: Cert info extracted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertInfo'
+        '400':
+          description: Bad request — wrong password, malformed input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        kalkan:
+          type: string
+          description: 'Loaded Kalkan provider name + version, or "(not loaded)" if the JAR is missing'
+          example: KALKAN/0.7
+
+    SignRequest:
+      type: object
+      required: [p12Base64, password]
+      properties:
+        p12Base64:
+          type: string
+          format: byte
+          description: Base64-encoded PKCS#12 (.p12 / .pfx) file
+        password:
+          type: string
+          description: Password protecting the .p12. **Never logged.**
+          format: password
+        documentBase64:
+          type: string
+          format: byte
+          description: Base64-encoded document bytes. Required for /sign, ignored by /info.
+        detached:
+          type: boolean
+          default: true
+          description: 'true: signature only (verifier needs original doc too). false: embed doc inside CMS.'
+        hashAlgorithm:
+          type: string
+          enum: [auto, SHA-256, SHA-384, SHA-512]
+          default: auto
+          description: |
+            Hash algorithm for the message digest and signature.
+            - For RSA keys, defaults to SHA-256.
+            - For GOST keys this is ignored — the algorithm is mandated by the cert's curve size.
+
+    SignResponse:
+      type: object
+      required: [signatureBase64, signedAtIso, detached, certInfo]
+      properties:
+        signatureBase64:
+          type: string
+          format: byte
+          description: CAdES-BES CMS / PKCS#7 SignedData blob (DER, base64-encoded)
+        signedAtIso:
+          type: string
+          format: date-time
+          example: '2026-05-12T10:00:00Z'
+        detached:
+          type: boolean
+        certInfo:
+          $ref: '#/components/schemas/CertInfo'
+
+    CertInfo:
+      type: object
+      description: Parsed identity from the signing certificate subject.
+      required: [keyUsage, validFromIso, validToIso, serialNumberHex, certificatePem]
+      properties:
+        bin:
+          type: [string, 'null']
+          description: 12-digit BIN of the legal entity, or null
+          example: '190440033661'
+        iin:
+          type: [string, 'null']
+          description: 12-digit IIN of the natural person, or null
+          example: '880302001101'
+        commonName:
+          type: [string, 'null']
+          example: 'ЕРБОСЫН НҰРБОЛ'
+        surname:
+          type: [string, 'null']
+        givenName:
+          type: [string, 'null']
+        organization:
+          type: [string, 'null']
+          example: '"QAR Solutions" жауапкершілігі шектеулі серіктестігі'
+        email:
+          type: [string, 'null']
+        keyUsage:
+          type: string
+          enum: [AUTH, SIGN, UNKNOWN]
+        validFromIso:
+          type: string
+          format: date-time
+        validToIso:
+          type: string
+          format: date-time
+        serialNumberHex:
+          type: string
+        certificatePem:
+          type: string
+          description: PEM-encoded certificate, useful for downstream chain validation
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

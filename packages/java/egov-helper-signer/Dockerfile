@@ -8,14 +8,9 @@ WORKDIR /work
 COPY pom.xml .
 COPY libs ./libs
 COPY src ./src
-# Fail loudly if Kalkan JARs are missing OR are 0-byte placeholders (a real gotcha — the
-# public-preview SDK ships empty JARs and you only get real binaries after dev approval).
-RUN set -e; \
-    for f in libs/knca_provider_jce_kalkan-0.7.5.jar libs/knca_provider_util-0.8.5.jar; do \
-      if [ ! -f "$f" ]; then echo "ERROR: $f is missing. Apply at https://sdk.pki.gov.kz/ and drop the real JARs into libs/." && exit 1; fi; \
-      if [ ! -s "$f" ]; then echo "ERROR: $f is a 0-byte placeholder — you got the public-preview SDK, not the approved one. Request developer access at sdk.pki.gov.kz to get real binaries." && exit 1; fi; \
-    done
-RUN mvn -q -DskipTests package
+COPY scripts ./scripts
+COPY build.sh .
+RUN chmod +x build.sh scripts/check-kalkan-jars.sh && ./build.sh
 
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
