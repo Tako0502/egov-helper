@@ -1,6 +1,6 @@
 {
   "name": "@smoker_winston/egov-helper",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Browser-side helper for Kazakhstan e-Gov digital signatures (NUC RK / pki.gov.kz): verify a typed BIN/IIN against a .p12 certificate, sign documents as CAdES-BES, and decode CMS signatures — all without NCALayer.",
   "homepage": "https://github.com/Tako0502/egov-helper#readme",
   "repository": {
@@ -42,8 +42,8 @@
     "prepublishOnly": "npm run typecheck && npm run build && node scripts/smoke-test.mjs"
   },
   "dependencies": {
-    "@smoker_winston/egov-helper": "^0.1.0",
-    "node-forge": "^1.3.1"
+    "node-forge": "^1.3.1",
+    "sigex-qr-signing-client": "^0.3.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -2,6 +2,13 @@
 
 Helper library for Kazakhstan e-Gov digital signatures, **without NCALayer**.
 
+**Two signing flows**, picked per call by your app:
+
+1. **`.p12` + password + Kalkan backend** — user uploads their key, your service signs (RSA + GOST).
+2. **eGov Mobile via QR / deeplink (SIGEX hub)** — user signs with their phone, no `.p12` needed.
+
+The library is a thin client over both. Same `CertInfo` / `SignResult` shape, swap the function name.
+
 The user picks their NUC RK `.p12` (`.pfx`) file in your form. This library:
 
 1. **Verifies** the BIN/IIN they typed matches the BIN/IIN in their certificate.
@@ -117,6 +124,37 @@ await signDocument(p12, pass, doc, {
 The "backend" is the Java + Kalkan service in [`packages/java/egov-helper-signer/`](packages/java/egov-helper-signer/) — Kalkan is the only library that handles every KZ algorithm variant correctly (it's what NUC RK ships and what NCALayer uses).
 
 For local development without Kalkan, [`scripts/mock-backend.mjs`](scripts/mock-backend.mjs) is a Node.js stand-in implementing the same wire protocol with node-forge (RSA only — proves the wire works, but won't unlock your GOST keys).
+
+### Alternative: sign via eGov Mobile (no `.p12` from user)
+
+`signDocumentViaQr` lets the user sign with their phone. No file upload, no password
+prompt — they tap their cert in eGov Mobile and approve. Wraps the official
+[`sigex-qr-signing-client`](https://github.com/sigex-kz/sigex-qr-signing-client) by SIGEX.
+
+```ts
+import { signDocumentViaQr, isLikelyMobile } from '@smoker_winston/egov-helper';
+
+const result = await signDocumentViaQr(documentBytes, {
+  description: 'Contract #C-12345',
+  onQrReady: (qr) => {
+    if (isLikelyMobile()) {
+      // On phones, redirect directly to the eGov Mobile app.
+      window.location.href = qr.eGovMobileLink;
+    } else {
+      // On desktop, render the QR code (qr.qrCodeDataUrl is a base64 PNG).
+      document.getElementById('qr-img').src = qr.qrCodeDataUrl;
+    }
+  },
+});
+console.log('Signed CMS:', result.signatureBase64);
+```
+
+Backend: nothing — SIGEX is the relay. You receive the same CMS shape as `signDocument`,
+verify it on your side with `Tako0502.EgovHelper`.
+
+Works for any KZ resident who has eGov Mobile installed and their key registered there
+(which is most people who have an egov.kz key already). Doesn't need NCALayer, doesn't
+need your own Kalkan service, doesn't need a `.p12` file from the user.
 
 ### Why 0.3.0 dropped the in-browser path
 

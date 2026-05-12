@@ -26,6 +26,7 @@
 
 export { checkBin } from './bin';
 export { signDocument } from './sign';
+export { signDocumentViaQr, isLikelyMobile } from './qr';
 export { inspectSignature } from './inspect';
 export { addTimestamp } from './timestamp';
 export { parseP12, extractCertInfo } from './parse';
@@ -38,6 +39,9 @@ export type {
   BackendOptions,
   SignOptions,
   SignResult,
+  QrSignOptions,
+  QrSignResult,
+  QrInfo,
   SignerInspection,
   SignatureInspection,
   InspectOptions,

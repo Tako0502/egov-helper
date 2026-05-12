@@ -97,6 +97,57 @@ export interface SignOptions extends BackendOptions {
 
 export interface CheckBinOptions extends BackendOptions {}
 
+/**
+ * Info about the QR/deeplink rendered by signDocumentViaQr(). Pass this to your UI:
+ * desktop renders the QR; mobile redirects to the deeplink.
+ */
+export interface QrInfo {
+  /** Base64 PNG data URL, usable directly as `<img src={...}>`. */
+  qrCodeDataUrl: string;
+  /** Deeplink that opens eGov Mobile to start signing. Use `window.location.href = link` on phones. */
+  eGovMobileLink: string;
+  /** Deeplink for the eGov Business app (alternative). */
+  eGovBusinessLink: string;
+  /** When SIGEX will time out the request, or null if not reported by the hub. */
+  expiresAt: Date | null;
+}
+
+export interface QrSignOptions {
+  /** SIGEX hub base URL. Default: `https://sigex.kz`. */
+  sigexHub?: string;
+  /** Description shown to the user inside eGov Mobile. Default: a generic one. */
+  description?: string;
+  /** Document name (shown in the eGov Mobile signing dialog). Default: `'document'`. */
+  documentName?: string;
+  /**
+   * Localised document names as [ru, kk, en]. Overrides `documentName` if provided.
+   * If you only know the document name in one language, pass the same string three times.
+   */
+  documentNames?: string[];
+  /** If true, embed the document inside the CMS. Default: false (detached). */
+  attached?: boolean;
+  /**
+   * If true, eGov Mobile shows a PDF preview before the user signs. Only set true if
+   * the document is actually a PDF — otherwise the preview will be junk.
+   */
+  isPdf?: boolean;
+  /** Called as soon as the QR + deeplinks are ready. Render the QR or redirect. */
+  onQrReady?: (qr: QrInfo) => void;
+  /** Called when SIGEX confirms eGov Mobile has fetched the data (between scan and sign). */
+  onDataSent?: () => void;
+  /** Called for each transient polling error (debugging). */
+  onPollError?: (err: Error) => void;
+}
+
+export interface QrSignResult {
+  /** CMS / PKCS#7 SignedData bytes. */
+  signature: Uint8Array;
+  /** Same bytes, base64-encoded. */
+  signatureBase64: string;
+  /** Time the signature was received (best-effort — SIGEX doesn't report the exact sign time). */
+  signedAt: Date;
+}
+
 export interface SignResult {
   /** CMS / PKCS#7 SignedData (DER-encoded). This is what KalkanCrypt verifies. */
   signature: Uint8Array;
