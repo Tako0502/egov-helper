@@ -56,22 +56,30 @@ export interface CheckBinResult {
 }
 
 /**
- * Where the actual signing should happen.
+ * Common options every backend-routed call needs.
  *
- * - 'browser' — sign in the user's browser with node-forge. **RSA only.** Fastest, key never
- *               leaves the user's machine, but throws on GOST keys.
- * - 'backend' — POST the .p12 + password + document to your own signing service. Works for
- *               both RSA and GOST (since Kalkan-on-Java covers everything KZ uses), but the
- *               user's private key transits to your backend over TLS for the duration of the
- *               request. Requires `backendSignUrl` to be set.
- * - 'auto'    — default. Try 'browser' first; on a GOST-detection error, automatically retry
- *               via 'backend' if `backendSignUrl` is set. If the key is RSA, behaves identically
- *               to 'browser'. The recommended setting for most apps — you get the security of
- *               in-browser RSA for the majority and graceful fallback for GOST holdouts.
+ * The library always routes `.p12` operations through your Kalkan-backed Java service
+ * (the one in `packages/java/egov-helper-signer/`). Set `backendUrl` to the base URL of
+ * that service — the library appends `/sign` for signing and `/info` for cert lookups.
  */
-export type SignTransport = 'auto' | 'browser' | 'backend';
+export interface BackendOptions {
+  /**
+   * Base URL of the Kalkan-backed signing service.
+   * Examples:
+   *   - 'http://localhost:7676'              (local dev)
+   *   - 'https://api.example.kz/egov'        (production behind a TLS terminator)
+   *
+   * The library POSTs to `${backendUrl}/sign` and `${backendUrl}/info`.
+   */
+  backendUrl: string;
+  /**
+   * Extra fetch options (custom headers, AbortSignal, credentials mode, etc.) passed
+   * through to the backend POST.
+   */
+  fetchInit?: RequestInit;
+}
 
-export interface SignOptions {
+export interface SignOptions extends BackendOptions {
   /**
    * If true (default), produces a detached signature: the document content is NOT embedded
    * in the signature. The verifier must be given both the original document and the signature.
@@ -81,30 +89,13 @@ export interface SignOptions {
    */
   detached?: boolean;
   /**
-   * Hash algorithm used for both the message digest and signing. Default: SHA-256.
-   * KalkanCrypt and most KZ verification services accept SHA-256 / SHA-384 / SHA-512.
-   *
-   * For backend signing of GOST keys, the backend ignores this and uses the algorithm
-   * mandated by the key's curve size (Stribog-256 for 34.10-2012-256, Stribog-512 for
-   * 34.10-2012-512).
+   * Hash algorithm. Default: SHA-256. For GOST keys the backend ignores this and uses the
+   * algorithm mandated by the key's curve (Stribog-256 / Stribog-512).
    */
   hashAlgorithm?: 'SHA-256' | 'SHA-384' | 'SHA-512';
-  /**
-   * Where signing should happen. Default 'auto'. See {@link SignTransport}.
-   */
-  transport?: SignTransport;
-  /**
-   * Required when transport='backend' (or for 'auto' to be able to fall back on GOST).
-   * Full URL of your signing endpoint — typically the Kalkan-Java service from
-   * `packages/java/egov-helper-signer/` mounted at e.g. https://api.example.kz/egov/sign.
-   */
-  backendSignUrl?: string;
-  /**
-   * Extra fetch options (custom headers, AbortSignal, credentials mode, etc.) passed
-   * through to the backend POST. Only used when the call routes via 'backend'.
-   */
-  fetchInit?: RequestInit;
 }
+
+export interface CheckBinOptions extends BackendOptions {}
 
 export interface SignResult {
   /** CMS / PKCS#7 SignedData (DER-encoded). This is what KalkanCrypt verifies. */

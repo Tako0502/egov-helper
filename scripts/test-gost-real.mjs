@@ -2,26 +2,44 @@
 // This is the proof-of-life test for the whole "GOST without NCALayer" claim.
 
 import { readFileSync } from 'node:fs';
-import { signDocument, inspectSignature } from '../dist/index.js';
+import { checkBin, signDocument, inspectSignature } from '../dist/index.js';
 
 const P12 = '/Users/talanterzhan/Documents/Secretkey/QarSolutions/GOST512_1800c083acbbf16157027f4f14b1cad739f1f1b6.p12';
 const PASSWORD = 'ZQARSolutions2025';
-const URL = 'http://localhost:7676/';
+const BACKEND = 'http://localhost:7676';
 
 const p12 = new Uint8Array(readFileSync(P12));
 const doc = new TextEncoder().encode('Real GOST contract — signed at ' + new Date().toISOString());
 
 console.log('== GOST .p12 → Java/Kalkan backend → CMS ==\n');
 console.log('cert:     ', P12.split('/').pop());
-console.log('backend:  ', URL);
+console.log('backend:  ', BACKEND);
 console.log('doc:      ', doc.length, 'bytes\n');
 
+console.log('1. checkBin (real BIN of the cert: 190440033661) — should match');
+try {
+  const r = await checkBin(p12, PASSWORD, '190440033661', { backendUrl: BACKEND });
+  console.log(`   match=${r.match}, field=${r.matchedField}, certBIN=${r.certBin}`);
+  if (!r.match) process.exit(1);
+} catch (e) {
+  console.error('✗ checkBin threw:', e.message);
+  process.exit(1);
+}
+
+console.log('\n2. checkBin with WRONG BIN — should NOT match');
+try {
+  const r = await checkBin(p12, PASSWORD, '111111111111', { backendUrl: BACKEND });
+  console.log(`   match=${r.match} (expected false)`);
+  if (r.match) process.exit(1);
+} catch (e) {
+  console.error('✗ checkBin threw:', e.message);
+  process.exit(1);
+}
+
+console.log('\n3. signDocument through the Kalkan backend');
 let result;
 try {
-  result = await signDocument(p12, PASSWORD, doc, {
-    transport: 'backend',
-    backendSignUrl: URL,
-  });
+  result = await signDocument(p12, PASSWORD, doc, { backendUrl: BACKEND });
 } catch (e) {
   console.error('✗ signDocument threw:', e.message);
   process.exit(1);

@@ -49,10 +49,14 @@ public final class Application {
             put("kalkan", KalkanSigner.kalkanVersion());
         }}));
 
-        // The only real endpoint. Mounted both at / and /sign so consumers can pick.
-        SigningHandler handler = new SigningHandler(debugDump);
-        app.post("/", handler::handle);
-        app.post("/sign", handler::handle);
+        // Sign: load .p12, sign document, return CMS.
+        SigningHandler signHandler = new SigningHandler(debugDump);
+        app.post("/", signHandler::handle);
+        app.post("/sign", signHandler::handle);
+
+        // Info: load .p12, return cert info only (no signing). Used by checkBin().
+        CertInfoHandler infoHandler = new CertInfoHandler(debugDump);
+        app.post("/info", infoHandler::handle);
 
         app.before(ctx -> {
             if (requireHttps && !"https".equalsIgnoreCase(ctx.header("X-Forwarded-Proto"))) {
