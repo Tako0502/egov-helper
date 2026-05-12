@@ -36,6 +36,7 @@ export type {
   CheckBinResult,
   SignOptions,
   SignResult,
+  SignTransport,
   SignerInspection,
   SignatureInspection,
   InspectOptions,

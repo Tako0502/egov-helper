@@ -1,0 +1,8 @@
+target/
+*.iml
+.idea/
+.vscode/
+*.log
+
+# Kalkan is distributed under NUC RK's terms; we never commit it.
+libs/*.jar

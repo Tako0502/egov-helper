@@ -107,9 +107,25 @@ Options:
 ```ts
 await signDocument(p12, pass, doc, {
   detached: false,         // default: true. false = embed the document in the signature
-  hashAlgorithm: 'SHA-384' // default: 'SHA-256'. Also: 'SHA-512'
+  hashAlgorithm: 'SHA-384',// default: 'SHA-256'. Also: 'SHA-512'
+
+  // Transport selection (v0.2.0+)
+  transport: 'auto',       // 'browser' | 'backend' | 'auto' (default)
+  backendSignUrl: 'https://signer.example.kz/sign',  // required for GOST
 });
 ```
+
+**Transport options** (new in 0.2.0):
+
+| `transport` | What it does | Works for |
+|---|---|---|
+| `'browser'` | Signs in-browser with node-forge. Private key never leaves the user's browser. | **RSA only.** Throws `GOST not supported` on GOST keys. |
+| `'backend'` | POSTs the `.p12`, password, and document to `backendSignUrl`. Your server signs with Kalkan (Java). | RSA + GOST. Key transits to backend over TLS. |
+| `'auto'` (default) | Tries browser first. If the key is GOST and `backendSignUrl` is set, falls back to backend automatically. | Both — RSA stays in-browser, GOST routes to backend. |
+
+For the `'backend'` path, you need to run [`packages/java/egov-helper-signer/`](packages/java/egov-helper-signer/) — a Javalin service that wraps NUC RK's KalkanCrypt JCE provider. See its README for setup (requires applying for the Kalkan SDK at <https://sdk.pki.gov.kz/>).
+
+For local development without Kalkan, [`scripts/mock-backend.mjs`](scripts/mock-backend.mjs) is a Node.js stand-in that implements the same wire protocol using the in-browser signer (RSA only — proves the transport works, but doesn't unlock GOST).
 
 ### 3. `inspectSignature(input, options?) → SignatureInspection`
 

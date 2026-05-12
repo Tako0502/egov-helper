@@ -1,0 +1,19 @@
+services:
+  egov-signer:
+    build: .
+    image: egov-helper-signer:0.2.0
+    container_name: egov-signer
+    ports:
+      - "7575:7575"
+    environment:
+      ALLOWED_ORIGIN: "*"          # tighten to your frontend origin in production
+      MAX_BODY_MB: "32"
+      REQUIRE_HTTPS: "false"       # set true when fronting with nginx/caddy/ALB
+      DEBUG_DUMP_REQS: "false"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7575/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

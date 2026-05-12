@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>kz.atasuai</groupId>
+  <artifactId>egov-helper-signer</artifactId>
+  <version>0.2.0</version>
+  <packaging>jar</packaging>
+  <name>egov-helper-signer</name>
+  <description>Kalkan-backed CMS signing service for @smoker_winston/egov-helper</description>
+
+  <properties>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <javalin.version>5.6.5</javalin.version>
+    <jackson.version>2.16.1</jackson.version>
+    <slf4j.version>2.0.13</slf4j.version>
+  </properties>
+
+  <dependencies>
+    <!-- Tiny HTTP framework. ~3 MB, started fully in 6 LOC. -->
+    <dependency>
+      <groupId>io.javalin</groupId>
+      <artifactId>javalin</artifactId>
+      <version>${javalin.version}</version>
+    </dependency>
+
+    <!-- JSON (in/out wire protocol) -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+      <version>${jackson.version}</version>
+    </dependency>
+
+    <!-- Simple console logger. Javalin needs SLF4J on the classpath. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>${slf4j.version}</version>
+    </dependency>
+
+    <!--
+      KalkanCrypt JCE provider (kz.gov.pki).
+      You must obtain this JAR from https://sdk.pki.gov.kz/ (free, requires registration),
+      then drop it into `libs/` alongside this pom.xml. Once it's there, `mvn package` works.
+      The version below is illustrative; whatever NUC RK ships you, update the path.
+    -->
+    <dependency>
+      <groupId>kz.gov.pki</groupId>
+      <artifactId>kalkancrypt</artifactId>
+      <version>0.7.0</version>
+      <scope>system</scope>
+      <systemPath>${project.basedir}/libs/kalkancrypt.jar</systemPath>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>egov-helper-signer</finalName>
+    <plugins>
+      <plugin>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.5.1</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer
+                  implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>kz.atasuai.egovsigner.Application</mainClass>
+                </transformer>
+                <transformer
+                  implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+              </transformers>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
