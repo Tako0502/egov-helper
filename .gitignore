@@ -16,3 +16,7 @@ secrets/
 tmp/
 bin/
 obj/
+out/
+
+# Claude harness internals (worktrees, agent state, etc.)
+.claude/

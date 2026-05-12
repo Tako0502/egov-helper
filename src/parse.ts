@@ -44,23 +44,41 @@ export async function parseP12(input: P12Input, password: string): Promise<Parse
 
   let certificate: forge.pki.Certificate | null = null;
   let privateKey: forge.pki.PrivateKey | null = null;
+  let sawCertBag = false;
+  let sawKeyBag = false;
 
   for (const safeContent of p12.safeContents) {
     for (const safeBag of safeContent.safeBags) {
-      if (safeBag.type === forge.pki.oids.certBag && safeBag.cert) {
-        // A .p12 may contain multiple certs (cert + chain). Prefer the leaf
-        // (the one whose subject does NOT match its issuer; CA certs are self-issued).
-        if (!certificate || isLeafCert(safeBag.cert)) {
-          certificate = safeBag.cert;
+      if (safeBag.type === forge.pki.oids.certBag) {
+        sawCertBag = true;
+        if (safeBag.cert) {
+          // A .p12 may contain multiple certs (cert + chain). Prefer the leaf
+          // (the one whose subject does NOT match its issuer; CA certs are self-issued).
+          if (!certificate || isLeafCert(safeBag.cert)) {
+            certificate = safeBag.cert;
+          }
         }
       } else if (
-        (safeBag.type === forge.pki.oids.pkcs8ShroudedKeyBag ||
-          safeBag.type === forge.pki.oids.keyBag) &&
-        safeBag.key
+        safeBag.type === forge.pki.oids.pkcs8ShroudedKeyBag ||
+        safeBag.type === forge.pki.oids.keyBag
       ) {
-        if (!privateKey) privateKey = safeBag.key;
+        sawKeyBag = true;
+        if (safeBag.key && !privateKey) privateKey = safeBag.key;
       }
     }
+  }
+
+  // If forge gave us back the bag containers but couldn't decode the cert or the key,
+  // the underlying algorithm is something forge doesn't understand — for NUC RK keys
+  // that almost always means GOST R 34.10. (NUC RK names GOST .p12 files with a
+  // "GOST256_" or "GOST512_" prefix, e.g. GOST512_<hash>.p12.)
+  if ((sawCertBag && !certificate) || (sawKeyBag && !privateKey)) {
+    throw new Error(
+      'This certificate appears to use GOST R 34.10 cryptography, which this library does ' +
+        'not support (it is RSA-only). NUC RK names GOST files with a "GOST256_" / "GOST512_" ' +
+        'prefix — if your file starts with one of those, request the RSA equivalent at ' +
+        'https://egov.kz/ (free, takes ~1 minute), or fall back to NCALayer for this user.',
+    );
   }
 
   if (!certificate) throw new Error('No certificate found inside the PKCS#12 file');
