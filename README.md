@@ -1,323 +1,336 @@
-# egov-helper
+# @smoker_winston/egov-helper
 
-Helper library for Kazakhstan e-Gov digital signatures, **without NCALayer**.
+> Sign Kazakhstan e-Gov documents from any web app — without NCALayer.
 
-**Two signing flows**, picked per call by your app:
+[![npm](https://img.shields.io/npm/v/@smoker_winston/egov-helper.svg)](https://www.npmjs.com/package/@smoker_winston/egov-helper)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-1. **`.p12` + password + Kalkan backend** — user uploads their key, your service signs (RSA + GOST).
-2. **eGov Mobile via QR / deeplink (SIGEX hub)** — user signs with their phone, no `.p12` needed.
+Three signing flows in one tiny TypeScript library:
 
-The library is a thin client over both. Same `CertInfo` / `SignResult` shape, swap the function name.
+| Flow | What the user does | Works for |
+|---|---|---|
+| **`.p12` signing** | Picks file + types password | RSA + GOST (anything NUC RK issues) |
+| **eGov Mobile (QR / deeplink)** | Scans QR or taps a link | Any key registered in eGov Mobile |
+| **Inspect** | Pastes a CMS blob | Reading existing signatures |
 
-The user picks their NUC RK `.p12` (`.pfx`) file in your form. This library:
-
-1. **Verifies** the BIN/IIN they typed matches the BIN/IIN in their certificate.
-2. **Signs** documents with their key, producing a CAdES-BES (RFC 5126) CMS / PKCS#7 SignedData blob.
-3. **Decodes** any CMS signature — yours or someone else's — into readable fields (signer cert, BIN/IIN, signed time, hash algorithm, attached/detached, signature validity, timestamp presence).
-4. **Timestamps** an existing signature by round-tripping through an RFC 3161 TSA (CAdES-T).
-5. **Verifies on the backend** via the companion .NET package `Tako0502.EgovHelper`.
-
-The private key from a `.p12` file never leaves the JS runtime that calls these functions.
+The library itself is a 14 KB HTTP client. The cryptographic heavy lifting happens in a small Java service ([`packages/java/egov-helper-signer/`](packages/java/egov-helper-signer/)) that wraps NUC RK's official [KalkanCrypt](https://pki.gov.kz/) provider — the only library that knows every KZ algorithm variant correctly.
 
 ---
 
-## Two packages
+## How it works
 
-| Package | Where it runs | What it's for |
-|---|---|---|
-| `@smoker_winston/egov-helper` (this repo, npm) | browser + Node | sign, inspect, timestamp, BIN/IIN check |
-| `Tako0502.EgovHelper` (`packages/dotnet/`, NuGet) | any .NET 6/8/9/10 backend | verify signatures, validate cert chain against NUC RK roots |
-
-Each project picks whichever side it needs. iOS / Android can hit the .NET backend over HTTP — they don't need a native helper for the verification half.
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                        Your web app (browser)                        │
+│  npm install @smoker_winston/egov-helper                             │
+└──────────────────────────────────────────────────────────────────────┘
+              │                                  │
+              │  .p12 + password                 │  no .p12 needed
+              ▼                                  ▼
+┌──────────────────────────────┐    ┌──────────────────────────────────┐
+│  Your Kalkan signer service  │    │   SIGEX hub  (sigex.kz, public)  │
+│  (Java, Docker, you run it)  │    │                                  │
+│  packages/java/egov-helper-  │    │   ↕  user's phone (eGov Mobile)  │
+│         signer/              │    │      scans QR / opens deeplink   │
+└──────────────────────────────┘    └──────────────────────────────────┘
+              │                                  │
+              ▼                                  ▼
+    CMS / CAdES-BES bytes              CMS / CAdES-BES bytes
+              │                                  │
+              └──────────────┬───────────────────┘
+                             ▼
+        Send to your storage backend for verification with
+             Tako0502.EgovHelper (.NET) or KalkanCrypt
+```
 
 ---
 
 ## Install
 
-### JS / TS (Vue, React, Node, Razor frontend)
-
 ```bash
 npm install @smoker_winston/egov-helper
 ```
 
-```ts
-import { checkBin, signDocument, inspectSignature, addTimestamp } from '@smoker_winston/egov-helper';
-```
-
-### Single `<script>` for Razor / MVC views
-
-Either pull from a CDN:
-
-```html
-<script src="https://unpkg.com/@smoker_winston/egov-helper/dist/egov-helper.min.js"></script>
-<script>
-  const { checkBin, signDocument, inspectSignature } = window.EgovHelper;
-</script>
-```
-
-…or `npm install` and copy `node_modules/@smoker_winston/egov-helper/dist/egov-helper.min.js` into your project's static folder so it ships with your build.
-
-### .NET backend
+For backend signature verification in .NET:
 
 ```bash
 dotnet add package Tako0502.EgovHelper
 ```
 
-```csharp
-using Tako0502.EgovHelper;
-var result = EgovSignatureVerifier.Verify(signatureBytes, documentBytes);
-```
+That's it for the library side. To actually run the `.p12`-signing flow, you also need a Kalkan signer service somewhere — see [Backend setup](#backend-setup) below.
 
 ---
 
-## Usage
+## Quick start
 
-### 1. `checkBin(p12, password, typedBin) → CheckBinResult`
+All three flows return the same `SignResult` / `CertInfo` shape, so the downstream code (verify, store, audit) is identical.
+
+### 1. Check that a typed BIN matches the user's `.p12`
 
 ```ts
-const fileInput = document.querySelector('input[type=file]');
-const result = await checkBin(fileInput.files[0], passwordField.value, '123456789012');
+import { checkBin } from '@smoker_winston/egov-helper';
+
+const result = await checkBin(p12File, password, '190440033661', {
+  backendUrl: 'http://your-signer.example.kz',
+});
 
 if (!result.match) {
-  alert(`Key does not match BIN ${typedBin}.\nCert BIN: ${result.certBin}\nCert IIN: ${result.certIin}`);
-  return;
+  alert(`That key belongs to ${result.certBin ?? result.certIin}, not 190440033661.`);
 }
-console.log('Owner:', result.certInfo.commonName, '— valid until', result.certInfo.validTo);
 ```
 
-`checkBin` strips non-digit characters from the typed value, so users can paste BINs in any format. It checks against **both** the cert's BIN and IIN and tells you which one matched (or `null` if neither).
-
-### 2. `signDocument(p12, password, content, options?) → SignResult`
-
-Produces a **CAdES-BES** signature: standard CMS / PKCS#7 SignedData with the mandatory `signingCertificateV2` (RFC 5035 / ESS) attribute that binds the signing certificate's hash into the signature.
+### 2. Sign a document with `.p12`
 
 ```ts
-const docBytes = new Uint8Array(await contractFile.arrayBuffer());
-const sig = await signDocument(p12File, password, docBytes); // detached, SHA-256
+import { signDocument } from '@smoker_winston/egov-helper';
 
-// Send to your backend for verification + storage:
-await fetch('/api/contracts/sign', {
+const contract = await loadContract();              // Uint8Array
+const sig = await signDocument(p12File, password, contract, {
+  backendUrl: 'http://your-signer.example.kz',
+  detached: true,                                   // default
+  hashAlgorithm: 'SHA-256',                         // RSA only; GOST mandates Stribog
+});
+
+// Send to your storage endpoint:
+await fetch('/api/contracts/store', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    contractId: 'C-12345',
+    contractId,
     signatureBase64: sig.signatureBase64,
-    signedAt: sig.signedAt.toISOString(),
     signerBin: sig.certInfo.bin,
-    signerIin: sig.certInfo.iin,
+    signerName: sig.certInfo.commonName,
+    signedAt: sig.signedAt.toISOString(),
   }),
 });
 ```
 
-Options (v0.3.0):
-
-```ts
-await signDocument(p12, pass, doc, {
-  backendUrl: 'http://localhost:7676',  // required — base URL of your Kalkan signing service
-  detached: false,                       // default: true. false = embed the document
-  hashAlgorithm: 'SHA-384',              // RSA only; GOST uses Stribog by mandate
-});
-```
-
-**`backendUrl` is required as of 0.3.0.** The library posts to `${backendUrl}/sign` for signing and `${backendUrl}/info` for cert-info lookups (used by `checkBin`).
-
-The "backend" is the Java + Kalkan service in [`packages/java/egov-helper-signer/`](packages/java/egov-helper-signer/) — Kalkan is the only library that handles every KZ algorithm variant correctly (it's what NUC RK ships and what NCALayer uses).
-
-For local development without Kalkan, [`scripts/mock-backend.mjs`](scripts/mock-backend.mjs) is a Node.js stand-in implementing the same wire protocol with node-forge (RSA only — proves the wire works, but won't unlock your GOST keys).
-
-### Alternative: sign via eGov Mobile (no `.p12` from user)
-
-`signDocumentViaQr` lets the user sign with their phone. No file upload, no password
-prompt — they tap their cert in eGov Mobile and approve. Wraps the official
-[`sigex-qr-signing-client`](https://github.com/sigex-kz/sigex-qr-signing-client) by SIGEX.
+### 3. Sign via eGov Mobile (no `.p12`, no password)
 
 ```ts
 import { signDocumentViaQr, isLikelyMobile } from '@smoker_winston/egov-helper';
 
-const result = await signDocumentViaQr(documentBytes, {
+const sig = await signDocumentViaQr(contract, {
   description: 'Contract #C-12345',
+  documentName: 'contract.pdf',
   onQrReady: (qr) => {
     if (isLikelyMobile()) {
-      // On phones, redirect directly to the eGov Mobile app.
+      // On phones, open eGov Mobile directly via deeplink.
       window.location.href = qr.eGovMobileLink;
     } else {
-      // On desktop, render the QR code (qr.qrCodeDataUrl is a base64 PNG).
-      document.getElementById('qr-img').src = qr.qrCodeDataUrl;
+      // On desktop, render the QR for the user to scan with their phone.
+      document.getElementById('qr-img').setAttribute('src', qr.qrCodeDataUrl);
     }
   },
+  onDataSent: () => setStatus('Waiting for signature on your phone…'),
 });
-console.log('Signed CMS:', result.signatureBase64);
+
+// Same result shape — same downstream code.
 ```
 
-Backend: nothing — SIGEX is the relay. You receive the same CMS shape as `signDocument`,
-verify it on your side with `Tako0502.EgovHelper`.
-
-Works for any KZ resident who has eGov Mobile installed and their key registered there
-(which is most people who have an egov.kz key already). Doesn't need NCALayer, doesn't
-need your own Kalkan service, doesn't need a `.p12` file from the user.
-
-### Why 0.3.0 dropped the in-browser path
-
-0.2.0 had an `transport: 'browser' | 'backend' | 'auto'` option that tried to sign RSA locally and fall back to backend for GOST. Real-world experience showed that ~all KZ users have GOST keys (the default issuance choice on egov.kz), so the in-browser branch ran on almost nobody. Splitting code paths between local crypto and a backend introduced subtle bugs (algorithm-mismatch errors, parse failures in 'auto' that landed differently across browsers) and complicated the API. **0.3.0 routes every operation through the backend uniformly** — single code path, works for every KZ key type.
-
-If you genuinely need in-browser signing (RSA only, key never leaves browser), pin to `0.2.x` or run the mock backend locally.
-
-### 3. `inspectSignature(input, options?) → SignatureInspection`
-
-Decode a CMS signature blob — yours or someone else's — and read everything inside it.
-
-Accepts: base64 string, hex string, `Uint8Array`, or `ArrayBuffer`.
+### 4. Inspect a signature (decode CMS into human-readable fields)
 
 ```ts
-const info = await inspectSignature(signatureBase64, { document: docBytes });
+import { inspectSignature } from '@smoker_winston/egov-helper';
 
-console.log('Signed by:', info.signers[0].certInfo.commonName);
-console.log('BIN:', info.signers[0].certInfo.bin);
-console.log('IIN:', info.signers[0].certInfo.iin);
-console.log('Signed at:', info.signers[0].signedAt);
-console.log('Hash:', info.signers[0].hashAlgorithm);
-console.log('Detached:', !info.attached);
-console.log('CAdES-BES (V2 attr):', info.signers[0].hasSigningCertificateV2);
-console.log('CAdES-T (timestamp):', info.hasTimestamp, info.timestampAt);
-console.log('Signature value verifies vs embedded cert:', info.signers[0].signatureValid);
-console.log('Document digest matches:', info.documentDigestMatches);
+const info = await inspectSignature(signatureBase64, { document: contractBytes });
+console.log(info.signers[0].certInfo.commonName);   // who signed it
+console.log(info.signers[0].signedAt);              // when
+console.log(info.documentDigestMatches);            // true if the doc wasn't tampered with
 ```
 
-The `documentDigestMatches` field is `null` unless you pass `options.document`. Use it to detect tampering: if it's `false`, someone altered the document after it was signed.
+> **Note**: `inspectSignature` works in-browser for RSA-signed CMS. For GOST CMS verification, use the .NET package `Tako0502.EgovHelper` (which speaks both).
 
-`signatureValid` is local-only — it proves the signed attributes weren't tampered with by anyone who doesn't hold the private key. It does **not** prove the certificate is trusted (chain validation against NUC RK roots — do that on your backend with the .NET package).
+---
 
-### 4. `addTimestamp(signature, { tsaUrl }) → Uint8Array`
+## Backend setup
 
-Upgrade a CAdES-BES signature to **CAdES-T** by round-tripping through an RFC 3161 Time Stamping Authority. The TimeStampToken is embedded as an unsigned attribute on the SignerInfo.
+### Run the Kalkan signer locally
 
-```ts
-import { addTimestamp } from '@smoker_winston/egov-helper';
+You need this for the `signDocument` and `checkBin` flows. (`signDocumentViaQr` uses SIGEX, so no local backend.)
 
-const cmsT = await addTimestamp(sig.signature, {
-  tsaUrl: 'https://tsp.pki.gov.kz/tsp',  // KZ TSA
-});
+#### One-time: get the Kalkan JARs
+
+Kalkan is NUC RK's official JCE provider. It can't be redistributed, so each developer / operator gets their own copy:
+
+1. Go to <https://sdk.pki.gov.kz/> and sign up.
+2. **Submit the developer-access form** (separate from account creation — without it you only get a public-preview SDK with empty 0-byte JARs).
+3. Wait 1–3 business days for approval.
+4. Download the approved SDK (`.7z` despite the name; on macOS extract with `brew install unar && unar SDK.7z`).
+5. Drop the JARs into `packages/java/egov-helper-signer/libs/`:
+   - `knca_provider_jce_kalkan-0.7.5.jar`
+   - `knca_provider_util-0.8.5.jar`
+
+#### Run it
+
+```bash
+docker compose up --build
 ```
 
-> **CORS warning**: public TSAs (including KZ's) do not return CORS headers, so this call **fails from a browser**. Run it from your backend (Node 18+ has `fetch` natively), or stand up a thin proxy endpoint your frontend can call.
+The service starts on <http://localhost:7676>. Hit `/health` to verify:
 
-### 5. Backend verification (.NET)
+```bash
+curl http://localhost:7676/health
+# {"ok":true,"kalkan":"KALKAN/0.7"}
+```
+
+Now point your frontend's `backendUrl` at it.
+
+### Run in production
+
+The Docker image is stateless — put it behind your TLS terminator (nginx/caddy/ALB), set environment variables, scale horizontally:
+
+| Variable | Recommended |
+|---|---|
+| `ALLOWED_ORIGIN` | Your real frontend origin (`https://app.example.kz`). **Don't leave as `*`.** |
+| `REQUIRE_HTTPS` | `true` |
+| `MAX_BODY_MB` | `8` (sane upper bound for contracts) |
+| `DEBUG_DUMP_REQS` | `false` |
+
+Full deployment guide: [`packages/java/egov-helper-signer/README.md`](packages/java/egov-helper-signer/README.md).
+
+### Backend verification
+
+Whichever flow you use, you'll want to verify the resulting CMS on your server before trusting it. The .NET companion package ships with the NUC RK root CAs bundled:
 
 ```csharp
 using Tako0502.EgovHelper;
 using System.Linq;
 
-[HttpPost("/api/contracts/sign")]
-public IActionResult Sign([FromBody] SignRequest req)
+var result = EgovSignatureVerifier.Verify(signature, document, new VerifyOptions
 {
-    var signature = Convert.FromBase64String(req.SignatureBase64);
-    var document  = Encoding.UTF8.GetBytes(req.ContractText);
+    ValidateCertificateChain = true,
+    TrustedRoots = EgovTrustRoots.Rsa.Concat(EgovTrustRoots.Gost).ToList(),
+});
 
-    // The NUC RK root + intermediate CAs are bundled inside the package — no need
-    // to download or distribute them yourself. (They're public infrastructure;
-    // refresh with scripts/fetch-nuc-roots.sh if pki.gov.kz publishes new ones.)
-    var result = EgovSignatureVerifier.Verify(signature, document, new VerifyOptions
-    {
-        ValidateCertificateChain = true,
-        TrustedRoots             = EgovTrustRoots.Rsa.ToList(),
-    });
-
-    if (!result.Valid)
-    {
-        return BadRequest(new { error = result.Signers.FirstOrDefault()?.SignatureError });
-    }
-
-    var signer = result.Signers[0];
-    if (signer.CertInfo.Bin != req.ExpectedBin)
-    {
-        return Forbid("Signing cert BIN does not match the user's claimed BIN");
-    }
-
-    return Ok(new {
-        signer    = signer.CertInfo.CommonName,
-        bin       = signer.CertInfo.Bin,
-        signedAt  = signer.SignedAt,
-        cadesBes  = signer.HasSigningCertificateV2,
-        timestamp = signer.HasTimestamp,
-    });
-}
+if (!result.Valid) return BadRequest(result.Signers.FirstOrDefault()?.SignatureError);
+if (result.Signers[0].CertInfo.Bin != expectedBin) return Forbid();
 ```
 
-See [`packages/dotnet/EgovHelper.Net/README.md`](packages/dotnet/EgovHelper.Net/README.md) for the full .NET API.
+Full .NET docs: [`packages/dotnet/EgovHelper.Net/README.md`](packages/dotnet/EgovHelper.Net/README.md).
 
 ---
 
-## API summary
+## Examples
 
-### JS
+Copy-paste-ready code for the common stacks:
+
+| Folder | Stack |
+|---|---|
+| [`examples/vue/`](examples/vue) | Vite + Vue 3 + TypeScript |
+| [`examples/react/`](examples/react) | Vite + React 18 + TypeScript |
+| [`examples/razor-mvc/`](examples/razor-mvc) | ASP.NET Core MVC — drop-in Controller + Razor view + JS snippet |
+| [`examples/plain-html/`](examples/plain-html) | Single HTML file with a `<script>` tag — no build step |
+
+CLI for ops / debugging:
+
+```bash
+npx @smoker_winston/egov-helper info --p12 cert.p12 --pwd pass --backend http://localhost:7676
+npx @smoker_winston/egov-helper sign --p12 cert.p12 --pwd pass --doc contract.pdf --backend http://localhost:7676 --out contract.cms
+npx @smoker_winston/egov-helper inspect --sig contract.cms --doc contract.pdf
+```
+
+OpenAPI spec for non-JS clients (Go, Python, mobile): [`packages/java/egov-helper-signer/openapi.yaml`](packages/java/egov-helper-signer/openapi.yaml).
+
+---
+
+## API reference
+
+### Functions
 
 | Function | Returns |
 |---|---|
-| `checkBin(p12, password, typedBin)` | `Promise<CheckBinResult>` |
-| `signDocument(p12, password, content, options?)` | `Promise<SignResult>` |
+| `checkBin(p12, password, typedBin, options)` | `Promise<CheckBinResult>` |
+| `signDocument(p12, password, content, options)` | `Promise<SignResult>` |
+| `signDocumentViaQr(content, options)` | `Promise<QrSignResult>` |
 | `inspectSignature(input, options?)` | `Promise<SignatureInspection>` |
-| `addTimestamp(signature, options)` | `Promise<Uint8Array>` |
-| `parseP12(p12, password)` | `Promise<ParsedP12>` *(low-level — gives you the raw forge cert + key)* |
-| `extractCertInfo(cert)` | `CertInfo` *(low-level — takes a forge `Certificate`)* |
+| `addTimestamp(signature, options)` | `Promise<Uint8Array>` — upgrade to CAdES-T |
+| `isLikelyMobile()` | `boolean` — UA + media-query detection |
 
-Full TypeScript types are shipped in `dist/index.d.ts`.
+### Key types
 
-### .NET
+```ts
+interface SignResult {
+  signature: Uint8Array;          // CMS / PKCS#7 SignedData (DER)
+  signatureBase64: string;        // same bytes, base64
+  signedAt: Date;
+  detached: boolean;
+  certInfo: CertInfo;             // BIN, IIN, CN, validity, etc.
+}
 
-| Method | Returns |
-|---|---|
-| `EgovSignatureVerifier.Verify(signature, document?, options?)` | `VerificationResult` |
-| `EgovSignatureVerifier.Inspect(signature)` | `VerificationResult` (no chain validation) |
-| `BinExtractor.Extract(cert)` | `CertInfo` |
+interface CertInfo {
+  bin: string | null;             // 12-digit BIN of the legal entity
+  iin: string | null;             // 12-digit IIN of the natural person
+  commonName: string | null;
+  surname: string | null;
+  givenName: string | null;
+  organization: string | null;
+  email: string | null;
+  keyUsage: 'AUTH' | 'SIGN' | 'UNKNOWN';
+  validFrom: Date;
+  validTo: Date;
+  serialNumberHex: string;
+  certificatePem: string;
+}
 
----
-
-## Build, test, develop
-
-```bash
-npm install
-npm run typecheck            # strict TS check
-npm run build                # outputs dist/index.{js,cjs,d.ts} + dist/egov-helper.min.js
-npm run test                 # build + Node smoke test (27 assertions on sign/inspect/check round-trips)
-npm run demo                 # build + serve plain-HTML demo on http://localhost:5173
-
-# Cross-language validation: .NET reads JS-produced signatures and verifies them
-npm run test                                                    # produces tmp/* artifacts
-dotnet run --project packages/dotnet/EgovHelper.Net.Tests       # 23 assertions, incl. EgovTrustRoots
-
-# Build the .NET package
-dotnet build -c Release packages/dotnet/EgovHelper.Net
-
-# Refresh the bundled NUC RK CA certificates (only needed if pki.gov.kz rotates them)
-scripts/fetch-nuc-roots.sh
-
-# Vue 3 example
-cd examples/vue && npm install && npm run dev    # http://localhost:5174
+interface BackendOptions {
+  backendUrl: string;             // base URL of your Kalkan signer service
+  fetchInit?: RequestInit;        // headers, AbortSignal, etc.
+}
 ```
 
-### Validate against a real NUC RK key
-
-The 27-assertion smoke test uses a synthetic self-signed cert. To prove the round-trip
-works against an actual `.p12` issued by egov.kz, run:
-
-```bash
-node scripts/test-with-real-p12.mjs ~/Downloads/AUTH_RSA256_xxxx.p12 'YourPassword' 123456789012
-dotnet run --project packages/dotnet/EgovHelper.Net.Tests
-```
-
-Both pass → JS-produced CMS is verifiable by .NET, BIN/IIN extraction works on real subjects,
-and CAdES-BES is structurally correct. Your `.p12` and password never leave your machine.
+Full TypeScript types ship with the package — `import type { ... } from '@smoker_winston/egov-helper'`.
 
 ---
 
 ## Limitations
 
-- **GOST keys are not supported.** A small fraction of older NUC RK `.p12` files use GOST R 34.10-2001 / 34.10-2012. Detected automatically — `parseP12` throws a clear error pointing the user at egov.kz to reissue an RSA cert (free, takes ~1 minute) or NCALayer for that user.
-- **TSA timestamping must run server-side** unless your TSA endpoint returns CORS headers (public ones don't).
-- **CAdES-BES, not CAdES-LT/LTA**. No long-term validation material (CRLs / OCSP responses embedded). Add by extending `signDocument` if you need archival signatures.
+- **`.p12` signing requires your own backend.** No third-party hosted signer exists for KZ keys; you have to run the Kalkan service yourself (it's a 1-line `docker compose up`).
+- **`inspectSignature` only handles RSA CMS in the browser.** For GOST CMS verification, use the .NET package server-side.
+- **eGov Mobile signing requires the user has eGov Mobile installed** and their cert is registered there. Most modern KZ users do.
+
+---
+
+## Versions
+
+| Package | Latest | What's in it |
+|---|---|---|
+| `@smoker_winston/egov-helper` (npm) | 0.4.0 | + `signDocumentViaQr` (eGov Mobile via SIGEX) |
+| `@smoker_winston/egov-helper` | 0.3.0 | Backend-only signing; `backendUrl` required everywhere |
+| `Tako0502.EgovHelper` (NuGet) | 0.1.1 | CMS verification, NUC RK CAs bundled |
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/Tako0502/egov-helper
+cd egov-helper
+npm install
+npm run build               # outputs dist/index.{js,cjs,d.ts} + dist/cli.mjs + dist/egov-helper.min.js
+npm run typecheck           # strict
+npm run test                # 27 RSA round-trip assertions
+
+# Kalkan signer (Java)
+cd packages/java/egov-helper-signer
+./build.sh                  # installs Kalkan JARs into local maven repo + mvn package
+java -jar target/egov-helper-signer.jar
+
+# .NET package
+cd packages/dotnet/EgovHelper.Net
+dotnet build -c Release
+
+# Tester UI
+cd examples/vue
+npm install && npm run dev  # http://localhost:5174
+```
+
+The full development workflow, troubleshooting, and operations checklist live in [`HOW-TO-USE.md`](HOW-TO-USE.md).
 
 ---
 
 ## License
 
-MIT
+MIT. See [`LICENSE`](LICENSE).
+
+The Kalkan JAR (`knca_provider_jce_kalkan-*.jar`, `knca_provider_util-*.jar`) you drop into `packages/java/egov-helper-signer/libs/` is governed by NUC RK's own terms — don't redistribute it.
