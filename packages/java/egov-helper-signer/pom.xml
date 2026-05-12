@@ -46,17 +46,26 @@
     </dependency>
 
     <!--
-      KalkanCrypt JCE provider (kz.gov.pki).
-      You must obtain this JAR from https://sdk.pki.gov.kz/ (free, requires registration),
-      then drop it into `libs/` alongside this pom.xml. Once it's there, `mvn package` works.
-      The version below is illustrative; whatever NUC RK ships you, update the path.
+      Kalkan JCE provider (kz.gov.pki). Obtain from https://sdk.pki.gov.kz/ — you must apply
+      for developer access; the "public preview" SDK ships empty 0-byte JAR placeholders, only
+      the approved download contains real binaries.
+
+      Drop these into ./libs/ before running `mvn package`. Filenames must match exactly —
+      adjust the `<systemPath>` values below if NUC RK ships you a different version.
     -->
     <dependency>
       <groupId>kz.gov.pki</groupId>
-      <artifactId>kalkancrypt</artifactId>
-      <version>0.7.0</version>
+      <artifactId>knca_provider_jce_kalkan</artifactId>
+      <version>0.7.5</version>
       <scope>system</scope>
-      <systemPath>${project.basedir}/libs/kalkancrypt.jar</systemPath>
+      <systemPath>${project.basedir}/libs/knca_provider_jce_kalkan-0.7.5.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>kz.gov.pki</groupId>
+      <artifactId>knca_provider_util</artifactId>
+      <version>0.8.5</version>
+      <scope>system</scope>
+      <systemPath>${project.basedir}/libs/knca_provider_util-0.8.5.jar</systemPath>
     </dependency>
   </dependencies>
 

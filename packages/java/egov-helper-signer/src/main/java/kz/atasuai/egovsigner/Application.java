@@ -36,7 +36,7 @@ public final class Application {
         ObjectMapper om = new ObjectMapper().registerModule(new JavaTimeModule());
 
         Javalin app = Javalin.create(config -> {
-            config.jsonMapper(new JavalinJackson(om, true));
+            config.jsonMapper(new JavalinJackson(om));
             config.http.maxRequestSize = (long) maxBodyMb * 1024 * 1024;
             config.plugins.enableCors(cors -> cors.add(it -> {
                 if (allowedOrigin.equals("*")) it.anyHost();
@@ -56,10 +56,11 @@ public final class Application {
 
         app.before(ctx -> {
             if (requireHttps && !"https".equalsIgnoreCase(ctx.header("X-Forwarded-Proto"))) {
-                ctx.status(400);
-                ctx.json(new ErrorResponse("This endpoint requires HTTPS. Place a TLS terminator " +
-                    "in front (nginx, caddy, etc.) and forward X-Forwarded-Proto."));
-                ctx.skipRemainingHandlers();
+                // Javalin 5.x: throw HttpResponseException to abort the chain
+                throw new io.javalin.http.HttpResponseException(400,
+                    "This endpoint requires HTTPS. Place a TLS terminator " +
+                    "in front (nginx, caddy, etc.) and forward X-Forwarded-Proto.",
+                    java.util.Map.of());
             }
         });
 
