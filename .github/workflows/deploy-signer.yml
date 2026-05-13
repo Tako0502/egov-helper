@@ -101,6 +101,7 @@ jobs:
           git checkout main
           git reset --hard "$DEPLOY_REF"
           cd ~/sign.atasuai.com
+          export APP_VERSION=\$(tr -d '[:space:]' < egov-helper/VERSION 2>/dev/null || echo unknown)
           COMPOSE_BAKE=false DOCKER_BUILDKIT=0 docker compose build signer
           docker compose up -d signer
           for i in \$(seq 1 30); do

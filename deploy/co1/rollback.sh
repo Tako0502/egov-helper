@@ -48,6 +48,7 @@ echo "Rolling back to: $LABEL  ($REF)"
 git reset --hard "$REF"
 
 cd ~/sign.atasuai.com
+export APP_VERSION=$(tr -d '[:space:]' < egov-helper/VERSION 2>/dev/null || echo unknown)
 COMPOSE_BAKE=false DOCKER_BUILDKIT=0 docker compose build signer
 docker compose up -d signer
 

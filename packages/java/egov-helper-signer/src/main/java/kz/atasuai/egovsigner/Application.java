@@ -29,6 +29,7 @@ public final class Application {
         int maxBodyMb = envInt("MAX_BODY_MB", 32);
         boolean requireHttps = envBool("REQUIRE_HTTPS", false);
         boolean debugDump = envBool("DEBUG_DUMP_REQS", false);
+        String appVersion = envStr("APP_VERSION", "dev");
 
         // Register the Kalkan JCE provider early so any later signing call can find it.
         KalkanSigner.registerProvider();
@@ -47,6 +48,21 @@ public final class Application {
         app.get("/health", ctx -> ctx.json(new java.util.HashMap<String, Object>() {{
             put("ok", true);
             put("kalkan", KalkanSigner.kalkanVersion());
+        }}));
+
+        // Service descriptor: name + version + Kalkan + the routes that exist.
+        app.get("/", ctx -> ctx.json(new java.util.LinkedHashMap<String, Object>() {{
+            put("name", "egov-helper-signer");
+            put("version", appVersion);
+            put("kalkan", KalkanSigner.kalkanVersion());
+            put("endpoints", java.util.List.of(
+                "GET  /",
+                "GET  /health",
+                "POST /sign",
+                "POST /info",
+                "POST /cms/inspect"
+            ));
+            put("source", "https://github.com/Tako0502/egov-helper");
         }}));
 
         // Sign: load .p12, sign document, return CMS.
