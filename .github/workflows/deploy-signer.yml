@@ -1,0 +1,141 @@
+name: Deploy signer
+
+# Trigger model:
+#   - Every push to main runs this workflow.
+#   - It reads the VERSION file at the repo root.
+#   - If tag "signer-vX.Y.Z" already exists, the workflow exits with no deploy.
+#   - If the tag is new, it SSHes to atasuai-co-1, runs git pull + docker
+#     compose build + up, health-checks via the public Cloudflare URL, and
+#     finally creates the tag on the deployed commit.
+#
+# Rollback: see deploy/co1/rollback.sh on the server.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-signer
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read VERSION
+        id: ver
+        run: |
+          if [ ! -f VERSION ]; then
+            echo "::error::VERSION file missing at repo root"
+            exit 1
+          fi
+          V=$(tr -d '[:space:]' < VERSION)
+          if [ -z "$V" ]; then
+            echo "::error::VERSION file is empty"
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=signer-v$V" >> "$GITHUB_OUTPUT"
+          echo "VERSION = $V"
+
+      - name: Check whether tag already exists
+        id: tag
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          git fetch --tags --quiet
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — no deploy."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag $TAG is new — deploying."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip notice
+        if: steps.tag.outputs.deploy == 'false'
+        run: echo "Nothing to do. Bump VERSION to deploy."
+
+      - name: Configure SSH
+        if: steps.tag.outputs.deploy == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat > ~/.ssh/config <<'EOF'
+          Host atasuai-jump
+              HostName 94.131.87.133
+              User jump_admin
+              IdentityFile ~/.ssh/deploy_key
+              IdentitiesOnly yes
+              StrictHostKeyChecking accept-new
+              UserKnownHostsFile ~/.ssh/known_hosts
+
+          Host atasuai-co-1
+              HostName 10.128.0.10
+              User atasuai-co-1
+              IdentityFile ~/.ssh/deploy_key
+              IdentitiesOnly yes
+              ProxyCommand ssh -W %h:%p atasuai-jump
+              StrictHostKeyChecking accept-new
+              UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Deploy on atasuai-co-1
+        if: steps.tag.outputs.deploy == 'true'
+        env:
+          DEPLOY_REF: ${{ github.sha }}
+        run: |
+          ssh atasuai-co-1 bash -s <<EOF
+          set -euo pipefail
+          cd ~/sign.atasuai.com/egov-helper
+          git fetch --all --tags --prune
+          git checkout main
+          git reset --hard "$DEPLOY_REF"
+          cd ~/sign.atasuai.com
+          COMPOSE_BAKE=false DOCKER_BUILDKIT=0 docker compose build signer
+          docker compose up -d signer
+          for i in \$(seq 1 30); do
+            STATUS=\$(docker inspect -f '{{.State.Health.Status}}' egov-signer 2>/dev/null || echo none)
+            if [ "\$STATUS" = "healthy" ]; then
+              echo "✓ signer healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "✗ signer never became healthy"
+          docker logs --tail 80 egov-signer
+          exit 1
+          EOF
+
+      - name: External health check (via Cloudflare)
+        if: steps.tag.outputs.deploy == 'true'
+        run: |
+          for i in $(seq 1 15); do
+            RESP=$(curl -fsSL -m 10 https://co1-api-sign.atasuai.com/health || true)
+            if echo "$RESP" | grep -q '"ok":true'; then
+              echo "✓ live: $RESP"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "✗ external health check failed"
+          exit 1
+
+      - name: Create + push tag
+        if: steps.tag.outputs.deploy == 'true'
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Deployed ${{ steps.ver.outputs.version }} from ${{ github.sha }}"
+          git push origin "$TAG"
+          echo "Tagged $TAG → ${{ github.sha }}"

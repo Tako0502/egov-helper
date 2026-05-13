@@ -58,6 +58,11 @@ public final class Application {
         CertInfoHandler infoHandler = new CertInfoHandler(debugDump);
         app.post("/info", infoHandler::handle);
 
+        // CMS inspect: parse a CMS blob, return the signer's cert info. Used by
+        // checkBinViaQr() — the JS lib chains this after a SIGEX eGov-Mobile sign.
+        CmsInspectHandler cmsInspectHandler = new CmsInspectHandler(debugDump);
+        app.post("/cms/inspect", cmsInspectHandler::handle);
+
         app.before(ctx -> {
             if (requireHttps && !"https".equalsIgnoreCase(ctx.header("X-Forwarded-Proto"))) {
                 // Javalin 5.x: throw HttpResponseException to abort the chain
