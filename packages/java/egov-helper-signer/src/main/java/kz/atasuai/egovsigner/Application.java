@@ -45,9 +45,8 @@ public final class Application {
             }));
         });
 
-        app.get("/health", ctx -> ctx.json(new java.util.LinkedHashMap<String, Object>() {{
+        app.get("/health-check", ctx -> ctx.json(new java.util.LinkedHashMap<String, Object>() {{
             put("ok", true);
-            put("kalkan", KalkanSigner.kalkanVersion());
             put("version", appVersion);
         }}));
 

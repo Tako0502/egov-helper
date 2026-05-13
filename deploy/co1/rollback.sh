@@ -62,7 +62,7 @@ for i in $(seq 1 30); do
 done
 
 for i in $(seq 1 10); do
-  RESP=$(curl -fsSL -m 10 https://co1-api-sign.atasuai.com/health || true)
+  RESP=$(curl -fsSL -m 10 https://co1-api-sign.atasuai.com/health-check || true)
   if echo "$RESP" | grep -q '"ok":true'; then
     echo "✓ live: $RESP"
     exit 0

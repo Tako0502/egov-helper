@@ -121,7 +121,7 @@ jobs:
         if: steps.tag.outputs.deploy == 'true'
         run: |
           for i in $(seq 1 15); do
-            RESP=$(curl -fsSL -m 10 https://co1-api-sign.atasuai.com/health || true)
+            RESP=$(curl -fsSL -m 10 https://co1-api-sign.atasuai.com/health-check || true)
             if echo "$RESP" | grep -q '"ok":true'; then
               echo "✓ live: $RESP"
               exit 0
