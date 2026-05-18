@@ -1,0 +1,465 @@
+{
+  "info": {
+    "name": "EGOVHelper — signer + eGov Mobile QR",
+    "_postman_id": "egov-helper-signer-2026",
+    "description": "End-to-end test collection for the egov-helper signer service and the SIGEX QR + eGov Mobile flow.\n\nWhat's in here\n---------------\n1. **Backend (Kalkan signer)** — `/health`, `/sign`, `/info`, `/cms/inspect` against your locally running Java service (default `http://localhost:7575`).\n2. **QR + eGov Mobile (SIGEX hub)** — `POST /api/egovQr`, the `dataURL` submit, and the `signURL` poll. Lets you walk the eGov Mobile signing flow from Postman without a browser.\n3. **Identity check via QR** — chains `POST /api/egovQr` (you scan the QR with eGov Mobile) → poll for CMS → `POST /cms/inspect` to extract the signer's BIN/IIN.\n\nThe environment ships with the real Elorda.com GOST-512 `.p12` (base64) and password pre-filled so teammates can run requests as-is. **Do not commit the environment file with the password in plain text — see README.md.**",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Backend (Kalkan signer)",
+      "description": "The Java service in `packages/java/egov-helper-signer/`. Start it locally with `mvn package && java -jar target/egov-helper-signer.jar` — it listens on port 7575 by default.\n\nThese endpoints expect a `.p12` and password from the user. We use the real Elorda.com GOST-512 cert so the team can verify the full Kalkan signing path (GOST keys cannot be tested via the browser-only RSA flow).",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{signerBaseUrl}}/health",
+              "host": ["{{signerBaseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Liveness probe. Returns `{ ok: true, kalkan: \"KALKAN/x.y\" }` once the service is ready. If `kalkan` is `\"(not loaded)\"`, the Kalkan JAR is missing from `libs/`."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /sign — sign a document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Capture the CMS into env so /cms/inspect can run next without copy-paste.",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('has signatureBase64', () => pm.expect(json.signatureBase64).to.be.a('string'));",
+                  "pm.test('has certInfo', () => pm.expect(json.certInfo).to.be.an('object'));",
+                  "pm.environment.set('cmsBase64', json.signatureBase64);",
+                  "if (json.certInfo) {",
+                  "  pm.environment.set('certBin', json.certInfo.bin || '');",
+                  "  pm.environment.set('certIin', json.certInfo.iin || '');",
+                  "}",
+                  "console.log('Signed. CMS length =', json.signatureBase64.length, '| cert BIN =', json.certInfo?.bin, '| IIN =', json.certInfo?.iin);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p12Base64\": \"{{p12Base64}}\",\n  \"password\": \"{{p12Password}}\",\n  \"documentBase64\": \"{{documentBase64}}\",\n  \"detached\": true,\n  \"hashAlgorithm\": \"auto\"\n}"
+            },
+            "url": {
+              "raw": "{{signerBaseUrl}}/sign",
+              "host": ["{{signerBaseUrl}}"],
+              "path": ["sign"]
+            },
+            "description": "Loads the `.p12`, signs `documentBase64`, returns a CAdES-BES CMS / PKCS#7 SignedData blob.\n\n- For GOST keys (like Elorda.com) `hashAlgorithm` is ignored — the curve mandates the hash.\n- `detached: true` (recommended) returns signature only; verifier needs the original doc.\n- `detached: false` embeds the document inside the CMS.\n\nThe test script stores `signatureBase64` into `{{cmsBase64}}` and the cert's BIN/IIN into `{{certBin}}` / `{{certIin}}` so you can run `/cms/inspect` immediately after."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /info — extract cert info (no signing)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('certBin', json.bin || '');",
+                  "pm.environment.set('certIin', json.iin || '');",
+                  "console.log('Cert subject — BIN:', json.bin, '| IIN:', json.iin, '| CN:', json.commonName, '| Org:', json.organization);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p12Base64\": \"{{p12Base64}}\",\n  \"password\": \"{{p12Password}}\",\n  \"documentBase64\": \"\",\n  \"detached\": true,\n  \"hashAlgorithm\": \"auto\"\n}"
+            },
+            "url": {
+              "raw": "{{signerBaseUrl}}/info",
+              "host": ["{{signerBaseUrl}}"],
+              "path": ["info"]
+            },
+            "description": "Loads the `.p12`, returns just the parsed certificate subject (BIN/IIN/CN/organization/key usage/validity/serial/PEM). Same body shape as `/sign` for protocol uniformity; the document fields are ignored.\n\nThis is what `checkBin()` in the JS lib calls — it's the BIN-match check before committing to a real signing flow."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /cms/inspect — extract cert info from a CMS blob",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "console.log('Signer subject — BIN:', json.bin, '| IIN:', json.iin, '| CN:', json.commonName);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cmsBase64\": \"{{cmsBase64}}\"\n}"
+            },
+            "url": {
+              "raw": "{{signerBaseUrl}}/cms/inspect",
+              "host": ["{{signerBaseUrl}}"],
+              "path": ["cms", "inspect"]
+            },
+            "description": "Parses a CMS / PKCS#7 SignedData blob and returns the signer's cert info (BIN/IIN/CN/etc.). Does NOT verify the signature value — purely a \"what's in this CMS\" query.\n\nUsed by the JS lib's `checkBinViaQr()` to extract cert info from a CMS produced by eGov Mobile via the SIGEX QR flow — so the BIN/IIN can be compared against the user-typed value without ever asking for a `.p12`.\n\nPre-flight: run `POST /sign` or the QR flow first so `{{cmsBase64}}` is populated."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /cms/verify — verify signature + doc digest",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('has signers[]', () => pm.expect(json.signers).to.be.an('array').and.have.length.greaterThan(0));",
+                  "const s = json.signers[0];",
+                  "console.log('Overall valid           :', json.valid);",
+                  "console.log('Detached                :', json.detached);",
+                  "console.log('signatureValid          :', s.signatureValid);",
+                  "console.log('documentDigestMatches   :', s.documentDigestMatches);",
+                  "console.log('certValidAtSigningTime  :', s.certValidAtSigningTime);",
+                  "console.log('signedAtIso             :', s.signedAtIso);",
+                  "console.log('Signer BIN/IIN          :', s.certInfo?.bin, '/', s.certInfo?.iin);",
+                  "pm.test('verification passed end-to-end', () => pm.expect(json.valid).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cmsBase64\": \"{{cmsBase64}}\",\n  \"documentBase64\": \"{{documentBase64}}\"\n}"
+            },
+            "url": {
+              "raw": "{{signerBaseUrl}}/cms/verify",
+              "host": ["{{signerBaseUrl}}"],
+              "path": ["cms", "verify"]
+            },
+            "description": "Full cryptographic verification of a CMS against the original document.\n\nReturns three independent booleans per signer:\n- `signatureValid` — signature value verifies against the embedded cert's public key.\n- `documentDigestMatches` — SHA / Stribog hash of `documentBase64` matches the `messageDigest` signed attribute in the CMS.\n- `certValidAtSigningTime` — the `signingTime` attribute is within the cert's NotBefore/NotAfter window.\n\nOverall `valid` is `true` iff all three pass for every signer.\n\nFor a **detached** CMS (eGov Mobile, `CMS_SIGN_ONLY`) you MUST pass `documentBase64`. For **attached** CMS (`CMS_WITH_DATA`) it's optional — if you pass it, the endpoint checks the doc matches what's embedded.\n\nPre-flight: run `POST /sign` (or the full QR flow) first so `{{cmsBase64}}` is populated; `{{documentBase64}}` should be the same bytes you signed."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /cms/verify (legal doc) — fetch PDF by role/type/version/language",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "const s = json.signers?.[0];",
+                  "console.log('valid                    :', json.valid);",
+                  "console.log('documentSource           :', json.documentSource);",
+                  "console.log('signatureValid           :', s?.signatureValid);",
+                  "console.log('documentDigestMatches    :', s?.documentDigestMatches);",
+                  "console.log('certValidAtSigningTime   :', s?.certValidAtSigningTime);",
+                  "console.log('Signer BIN/IIN           :', s?.certInfo?.bin, '/', s?.certInfo?.iin);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cmsBase64\": \"{{cmsBase64}}\",\n  \"version\": \"{{legalDocVersion}}\",\n  \"type\": \"{{legalDocType}}\",\n  \"role\": \"{{legalDocRole}}\",\n  \"language\": \"{{legalDocLanguage}}\"\n}"
+            },
+            "url": {
+              "raw": "{{signerBaseUrl}}/cms/verify",
+              "host": ["{{signerBaseUrl}}"],
+              "path": ["cms", "verify"]
+            },
+            "description": "Atasuai legal-docs integration. Instead of sending the document bytes, you send four params and the signer service fetches the canonical PDF from:\n\n```\n{{LEGAL_DOC_BASE_URL}}?role={{legalDocRole}}&type={{legalDocType}}&version={{legalDocVersion}}&language={{legalDocLanguage}}\n```\n\nThe server hashes the fetched bytes and compares to the CMS's messageDigest, producing the same response as the inline-doc variant. `documentSource` in the response will be `legal:<role>/<type>/<version>/<language>` so you can confirm exactly which doc was checked.\n\nServer-side prerequisites:\n- `LEGAL_DOC_BASE_URL` env var must be set on the signer (e.g. `https://atasuai.example.com/legal/api/contract/pdf`).\n- The legal-docs endpoint must return the PDF body with HTTP 200.\n\nClient-side prerequisites:\n- `{{cmsBase64}}` populated (run `/sign` or the QR flow first).\n- The four `legalDoc*` env vars set to the same role/type/version/language the user signed."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. QR + eGov Mobile (SIGEX hub)",
+      "description": "The eGov Mobile signing path goes through the public SIGEX hub at `https://sigex.kz`. Normally the browser drives this (via `sigex-qr-signing-client`), but you can walk the protocol from Postman to debug or to simulate the flow end-to-end with a real phone.\n\n**Run order**\n  1. `POST /api/egovQr` → captures `qrCode`, `dataURL`, `signURL`, `eGovMobileLaunchLink` into env vars.\n  2. `POST {{dataURL}}` → submit the document(s) to sign.\n  3. Render `{{qrCode}}` somewhere and scan with eGov Mobile (or on a phone, open `{{eGovMobileLaunchLink}}`).\n  4. `GET {{signURL}}` → poll until the CMS array arrives. Each entry is one signature, base64.",
+      "item": [
+        {
+          "name": "POST /api/egovQr — register QR signing session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.message) {",
+                  "  pm.expect.fail('SIGEX returned an error: ' + json.message);",
+                  "}",
+                  "pm.environment.set('qrCode', json.qrCode || '');",
+                  "pm.environment.set('dataURL', json.dataURL || '');",
+                  "pm.environment.set('signURL', json.signURL || '');",
+                  "pm.environment.set('eGovMobileLaunchLink', json.eGovMobileLaunchLink || '');",
+                  "pm.environment.set('eGovBusinessLaunchLink', json.eGovBusinessLaunchLink || '');",
+                  "console.log('Session registered.');",
+                  "console.log('  dataURL :', json.dataURL);",
+                  "console.log('  signURL :', json.signURL);",
+                  "console.log('  eGov Mobile deeplink:', json.eGovMobileLaunchLink);",
+                  "console.log('  (qrCode is base64 PNG, see {{qrCode}} — render at https://www.base64-image.de/ or similar to scan.)');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"EGOVHelper Postman test — {{$isoTimestamp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{sigexBaseUrl}}/api/egovQr",
+              "host": ["{{sigexBaseUrl}}"],
+              "path": ["api", "egovQr"]
+            },
+            "description": "Registers a new QR signing session on the SIGEX hub. Response shape:\n```json\n{\n  \"qrCode\": \"<base64 PNG>\",\n  \"dataURL\": \"https://sigex.kz/api/.../data\",\n  \"signURL\": \"https://sigex.kz/api/.../sign\",\n  \"eGovMobileLaunchLink\": \"egovmobile://...\",\n  \"eGovBusinessLaunchLink\": \"egovbusiness://...\"\n}\n```\n\nThe test script captures all five into env vars so the next two requests can use them as `{{dataURL}}` and `{{signURL}}`.\n\n`{{$isoTimestamp}}` is a Postman dynamic variable — gives each session a fresh description."
+          },
+          "response": []
+        },
+        {
+          "name": "POST {{dataURL}} — submit data to sign",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.message) pm.expect.fail('SIGEX error: ' + json.message);",
+                  "console.log('Data uploaded to SIGEX. Now scan the QR (or open {{eGovMobileLaunchLink}} on your phone) and sign in eGov Mobile.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cache-Control", "value": "no-store" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signMethod\": \"CMS_SIGN_ONLY\",\n  \"version\": 1,\n  \"documentsToSign\": [\n    {\n      \"id\": 1,\n      \"nameRu\": \"Тест EGOVHelper\",\n      \"nameKz\": \"EGOVHelper тесті\",\n      \"nameEn\": \"EGOVHelper test\",\n      \"meta\": [],\n      \"document\": {\n        \"file\": {\n          \"mime\": \"\",\n          \"data\": \"{{documentBase64}}\"\n        }\n      }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{dataURL}}",
+              "host": ["{{dataURL}}"]
+            },
+            "description": "Uploads the document(s) the user is about to sign to the SIGEX hub.\n\n- `signMethod`: `CMS_SIGN_ONLY` (detached signature — recommended) or `CMS_WITH_DATA` (attached, doc embedded inside CMS).\n- `documentsToSign[].document.file.data` is base64 of the file bytes. We reuse `{{documentBase64}}` so the QR flow signs the same payload as the `.p12` /sign request above.\n\nAfter this returns 200, the QR is hot — render `{{qrCode}}` and have the user scan it with eGov Mobile, or open `{{eGovMobileLaunchLink}}` on the phone where they're already authenticated."
+          },
+          "response": []
+        },
+        {
+          "name": "GET {{signURL}} — poll for CMS signatures",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.message) pm.expect.fail('SIGEX error: ' + json.message);",
+                  "// Response is either { signatures: [base64, ...] } when ready, or an empty/in-progress payload while we wait.",
+                  "if (json.signatures && json.signatures.length > 0) {",
+                  "  const first = json.signatures[0];",
+                  "  pm.environment.set('cmsBase64', first);",
+                  "  console.log('Signature received. Stored in {{cmsBase64}}.');",
+                  "  console.log('Now run \"POST /cms/inspect\" in folder 1 to extract the signer cert info.');",
+                  "} else {",
+                  "  console.log('Not signed yet — re-run this request after the user signs in eGov Mobile.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cache-Control", "value": "no-store" }
+            ],
+            "url": {
+              "raw": "{{signURL}}",
+              "host": ["{{signURL}}"]
+            },
+            "description": "Polls the SIGEX hub for the signature(s). Re-run repeatedly (every 1–2s) until `signatures` is a non-empty array.\n\nEach entry in `signatures` is a base64-encoded CMS / PKCS#7 SignedData blob. The test script captures the first one into `{{cmsBase64}}` — feed it into `POST /cms/inspect` to read the signer's BIN/IIN out of the cert.\n\nThe SIGEX session has a finite TTL (a few minutes); if the user never signs, the poll eventually returns an expired-session error."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Full identity check via QR (chained)",
+      "description": "Walk a complete checkBinViaQr() flow from Postman:\n\n  1. **Register QR session** (`POST /api/egovQr` from folder 2). Captures `dataURL`, `signURL`, `qrCode`.\n  2. **Submit a challenge document** (`POST {{dataURL}}` from folder 2). The doc here is `documentBase64` — but for a real BIN check you typically sign a short throwaway like `\"BIN verification — <ISO timestamp>\"`. Use the **Sign throwaway challenge** request below if you want to override.\n  3. **Render the QR or open the deeplink** — `{{qrCode}}` (base64 PNG) for desktop scan, or `{{eGovMobileLaunchLink}}` for same-device.\n  4. **Poll** (`GET {{signURL}}`) until a signature comes back.\n  5. **Inspect the CMS** — the request below calls `POST /cms/inspect` on your Java backend and compares the embedded BIN/IIN against the typed value `{{expectedBin}}`. Mirrors the logic of `checkBinViaQr()` in [src/bin.ts](../../../src/bin.ts).",
+      "item": [
+        {
+          "name": "Step 5 — POST /cms/inspect + BIN match",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "const typed = (pm.environment.get('expectedBin') || '').replace(/\\D/g, '');",
+                  "const certBin = json.bin || null;",
+                  "const certIin = json.iin || null;",
+                  "let match = false, matchedField = null;",
+                  "if (certBin && certBin === typed) { match = true; matchedField = 'BIN'; }",
+                  "else if (certIin && certIin === typed) { match = true; matchedField = 'IIN'; }",
+                  "console.log('Typed value     :', typed);",
+                  "console.log('Cert BIN        :', certBin);",
+                  "console.log('Cert IIN        :', certIin);",
+                  "console.log('Match           :', match, matchedField ? '(' + matchedField + ')' : '');",
+                  "pm.test('typed value matches cert BIN/IIN', () => pm.expect(match).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cmsBase64\": \"{{cmsBase64}}\"\n}"
+            },
+            "url": {
+              "raw": "{{signerBaseUrl}}/cms/inspect",
+              "host": ["{{signerBaseUrl}}"],
+              "path": ["cms", "inspect"]
+            },
+            "description": "Last step of the QR identity-check chain.\n\nPre-flight:\n- `{{cmsBase64}}` must be populated (run the QR poll in folder 2 until it returns a signature, or run `POST /sign` first).\n- `{{expectedBin}}` should be the 12-digit BIN/IIN the user typed in your UI.\n\nThe test script compares `{{expectedBin}}` against the cert's BIN, then its IIN. Asserts a match — fails the test if the typed value matches neither."
+          },
+          "response": []
+        },
+        {
+          "name": "Step 6 — POST /cms/verify (proves user signed THIS doc)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "const s = json.signers?.[0];",
+                  "console.log('valid                   :', json.valid);",
+                  "console.log('signatureValid          :', s?.signatureValid);",
+                  "console.log('documentDigestMatches   :', s?.documentDigestMatches);",
+                  "console.log('certValidAtSigningTime  :', s?.certValidAtSigningTime);",
+                  "pm.test('cryptographic verification passes', () => pm.expect(json.valid).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cmsBase64\": \"{{cmsBase64}}\",\n  \"documentBase64\": \"{{documentBase64}}\"\n}"
+            },
+            "url": {
+              "raw": "{{signerBaseUrl}}/cms/verify",
+              "host": ["{{signerBaseUrl}}"],
+              "path": ["cms", "verify"]
+            },
+            "description": "Optional follow-up to Step 5. Step 5 only checks the BIN matches a cert — but anyone could have signed an arbitrary doc with that cert. This step is the cryptographic proof that the holder of `{{certBin}}`'s private key signed THIS specific `{{documentBase64}}` and that the cert was valid at the time.\n\nUse this for: real signing flows where you store the CMS as legal evidence.\nFor identity-only checks (BIN verification): Step 5 alone is enough — you don't care about the throwaway challenge's signature beyond the cert it exposes."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Sanity checks on the environment before every request.",
+          "if (!pm.environment.get('signerBaseUrl')) {",
+          "  console.warn('signerBaseUrl is empty — set it to your egov-helper-signer URL (default http://localhost:7575).');",
+          "}",
+          "if (!pm.environment.get('p12Base64') || !pm.environment.get('p12Password')) {",
+          "  console.warn('p12Base64 / p12Password are empty — the /sign and /info requests will fail. Import the EGOVHelper.postman_environment.json environment.');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "signerBaseUrl",
+      "value": "http://localhost:7575",
+      "type": "string"
+    },
+    {
+      "key": "sigexBaseUrl",
+      "value": "https://sigex.kz",
+      "type": "string"
+    }
+  ]
+}

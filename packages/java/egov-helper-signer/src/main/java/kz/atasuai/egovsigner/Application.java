@@ -19,6 +19,12 @@ import org.slf4j.LoggerFactory;
  *                      when behind a TLS terminator that sets X-Forwarded-Proto)
  *   DEBUG_DUMP_REQS  — log redacted request summaries if "true" (default false; never log
  *                      passwords or .p12 bytes regardless of this flag)
+ *   LEGAL_DOC_BASE_URL — base URL for the Atasuai legal-doc PDF endpoint. When set,
+ *                      /cms/verify can resolve the document by {role,type,version,language}
+ *                      instead of requiring documentBase64. Example:
+ *                      `https://atasuai.example.com/legal/api/contract/pdf`
+ *                      (no trailing slash, no query string — params get appended)
+ *   LEGAL_DOC_TIMEOUT_MS — fetch timeout for the legal-doc endpoint, default 10000
  */
 public final class Application {
     private static final Logger log = LoggerFactory.getLogger(Application.class);
@@ -30,6 +36,8 @@ public final class Application {
         boolean requireHttps = envBool("REQUIRE_HTTPS", false);
         boolean debugDump = envBool("DEBUG_DUMP_REQS", false);
         String appVersion = envStr("APP_VERSION", "dev");
+        String legalDocBaseUrl = envStr("LEGAL_DOC_BASE_URL", "");
+        int legalDocTimeoutMs = envInt("LEGAL_DOC_TIMEOUT_MS", 10_000);
 
         // Register the Kalkan JCE provider early so any later signing call can find it.
         KalkanSigner.registerProvider();
@@ -64,6 +72,14 @@ public final class Application {
         CmsInspectHandler cmsInspectHandler = new CmsInspectHandler(debugDump);
         app.post("/cms/inspect", cmsInspectHandler::handle);
 
+        // CMS verify: full cryptographic verification — does signature value verify against
+        // the cert, does the document digest match the messageDigest in signedAttrs, was the
+        // cert valid at signingTime. This is the "did this user sign this document?" check.
+        LegalDocFetcher legalDocFetcher = new LegalDocFetcher(legalDocBaseUrl, legalDocTimeoutMs);
+        CmsVerifyHandler cmsVerifyHandler = new CmsVerifyHandler(debugDump, legalDocFetcher);
+        app.post("/cms/verify", cmsVerifyHandler::handle);
+
+
         app.before(ctx -> {
             if (requireHttps && !"https".equalsIgnoreCase(ctx.header("X-Forwarded-Proto"))) {
                 // Javalin 5.x: throw HttpResponseException to abort the chain
@@ -85,6 +101,8 @@ public final class Application {
             port, KalkanSigner.kalkanVersion());
         log.info("CORS allowed origin: {}", allowedOrigin);
         log.info("max request body:    {} MB", maxBodyMb);
+        log.info("legal-doc base URL:  {}",
+            legalDocBaseUrl.isEmpty() ? "(disabled — set LEGAL_DOC_BASE_URL to enable)" : legalDocBaseUrl);
     }
 
     private static String envStr(String name, String def) {

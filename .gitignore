@@ -18,5 +18,9 @@ bin/
 obj/
 out/
 
+# Postman environment files contain the real GOST .p12 base64 + password as
+# variables. Commit only the *.example.json template; the real one stays local.
+packages/java/egov-helper-signer/postman/EGOVHelper.postman_environment.json
+
 # Claude harness internals (worktrees, agent state, etc.)
 .claude/

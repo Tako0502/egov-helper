@@ -1,0 +1,59 @@
+# Production TLS terminator for the Kalkan signer at sign.3100.kz.
+#
+# Caddy auto-provisions a Let's Encrypt cert on first request and renews it
+# automatically. No certbot/cron needed.
+#
+# The signer is on the internal Docker network only; Caddy is the only thing
+# exposed to the internet.
+
+sign.3100.kz {
+    # TLS is automatic — Caddy reads the site name and gets a cert from Let's Encrypt.
+    # Port 80 traffic is redirected to 443 automatically.
+
+    encode gzip zstd
+
+    # Security headers — the signer is a JSON API behind a browser, so we lock things
+    # down. The signer also sets CORS allow-headers; Caddy just adds defense-in-depth.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "no-referrer"
+        # Hide that we're running Caddy
+        -Server
+        -X-Powered-By
+    }
+
+    # X-Forwarded-Proto so the signer's REQUIRE_HTTPS check (which looks at this header)
+    # knows the connection came in over HTTPS.
+    reverse_proxy signer:7676 {
+        header_up Host                {host}
+        header_up X-Real-IP           {remote_host}
+        header_up X-Forwarded-For     {remote_host}
+        header_up X-Forwarded-Proto   https
+
+        # Reasonable upper bound — your client posts a .p12 (~2 KB) + small document.
+        # Caddy will buffer in memory; cap to dodge giant-upload abuse.
+    }
+
+    request_body {
+        max_size 8MB
+    }
+
+    # Block all paths except the documented ones — keeps the attack surface minimal.
+    @disallowed {
+        not path /health /sign /info /
+    }
+    respond @disallowed 404
+
+    # Access log to stdout (so docker logs / journalctl picks it up).
+    log {
+        output stdout
+        format console
+    }
+}
+
+# Optional: redirect bare apex 3100.kz attempts to your homepage — uncomment if needed.
+# 3100.kz {
+#     redir https://www.3100.kz{uri} permanent
+# }

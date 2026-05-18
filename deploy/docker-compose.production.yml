@@ -1,0 +1,72 @@
+# Production deployment for sign.3100.kz.
+#
+# Layout:
+#   internet:443 → caddy → signer:7676 (private docker network)
+#
+# Usage on the prod server, from this folder:
+#   cp .env.example .env       # edit ALLOWED_ORIGIN first
+#   docker compose -f docker-compose.production.yml up -d --build
+#   docker compose -f docker-compose.production.yml logs -f
+#
+# After ~30s, Caddy will have grabbed a Let's Encrypt cert.
+# Verify: curl https://sign.3100.kz/health
+#
+# Prereqs on the host:
+#   - Docker + docker compose plugin (v2)
+#   - DNS A record sign.3100.kz → this host's IP
+#   - Ports 80 + 443 open in the host firewall AND any cloud security group
+#   - Kalkan JARs in ../packages/java/egov-helper-signer/libs/
+
+services:
+  signer:
+    build:
+      context: ../packages/java/egov-helper-signer
+      dockerfile: Dockerfile
+    image: egov-helper-signer:0.4.0
+    container_name: egov-signer
+    restart: unless-stopped
+    # No `ports:` — the signer is reachable only through Caddy.
+    expose:
+      - "7676"
+    environment:
+      PORT: "7676"
+      # Frontend origins allowed to hit the signer from a browser. Tighten this in
+      # production to only the sites that actually consume the API.
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-https://3100.kz}
+      # Cap the request body so a giant upload can't OOM the JVM.
+      MAX_BODY_MB: "8"
+      # Caddy sets X-Forwarded-Proto to https; the signer rejects requests without it.
+      REQUIRE_HTTPS: "true"
+      # NEVER turn this on in production — would leak request shapes to logs.
+      DEBUG_DUMP_REQS: "false"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7676/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: egov-caddy
+    restart: unless-stopped
+    depends_on:
+      signer:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data           # TLS certs live here — DON'T delete this volume
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+    name: egov_caddy_data
+  caddy_config:
+    name: egov_caddy_config

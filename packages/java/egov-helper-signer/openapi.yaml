@@ -109,6 +109,49 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /cms/verify:
+    post:
+      summary: Verify a CMS signature against a document
+      description: |
+        Full cryptographic verification — answers "did THIS user sign THIS document?"
+        Returns three independent booleans per signer so the caller can tell which check
+        actually failed:
+
+          - `signatureValid` — signature value verifies against the embedded cert
+          - `documentDigestMatches` — hash of `documentBase64` equals the `messageDigest`
+            signed attribute in the CMS
+          - `certValidAtSigningTime` — the `signingTime` attribute is within the cert's
+            NotBefore/NotAfter window
+
+        For a **detached** CMS (e.g. the eGov Mobile flow, `signMethod: CMS_SIGN_ONLY`)
+        you must pass `documentBase64`. For an **attached** CMS (`signMethod: CMS_WITH_DATA`)
+        the embedded content is used and `documentBase64` is optional — if you pass it,
+        we additionally check that it matches what's embedded.
+
+        This endpoint does NOT do cert-chain validation against NUC RK roots or OCSP/CRL
+        revocation checks. Both are deployment-specific and best layered on at the
+        integration site.
+      operationId: cmsVerify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CmsVerifyRequest'
+      responses:
+        '200':
+          description: Verification ran (the response body says whether it passed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CmsVerifyResponse'
+        '400':
+          description: Bad request — malformed CMS, missing document for detached CMS, etc.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     HealthResponse:
@@ -207,6 +250,91 @@ components:
         certificatePem:
           type: string
           description: PEM-encoded certificate, useful for downstream chain validation
+
+    CmsVerifyRequest:
+      type: object
+      required: [cmsBase64]
+      description: |
+        Two ways to tell the verifier which document to hash against:
+
+          1. Pass `documentBase64` directly (works without any external service).
+          2. Pass `{role, type, version, language}` — the server fetches the canonical
+             PDF from `LEGAL_DOC_BASE_URL?role=...&type=...&version=...&language=...`
+             (Atasuai legal-docs integration). All four are required when used.
+
+        If both are passed, `documentBase64` wins.
+      properties:
+        cmsBase64:
+          type: string
+          format: byte
+          description: Base64-encoded CMS / PKCS#7 SignedData blob to verify
+        documentBase64:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded document bytes. Required for detached CMS unless the four
+            legal-doc params are present.
+        role:
+          type: string
+          example: seller
+          description: Atasuai legal-doc fetch param. Allowed chars  [A-Za-z0-9._-]
+        type:
+          type: string
+          example: public-offer
+          description: Atasuai legal-doc fetch param. Allowed chars  [A-Za-z0-9._-]
+        version:
+          type: string
+          example: "1"
+          description: Atasuai legal-doc fetch param. Allowed chars  [A-Za-z0-9._-]
+        language:
+          type: string
+          example: kz
+          description: Atasuai legal-doc fetch param. Allowed chars  [A-Za-z0-9._-]
+
+    CmsVerifyResponse:
+      type: object
+      required: [valid, detached, signers]
+      properties:
+        valid:
+          type: boolean
+          description: Overall verdict — true iff every per-signer check passed
+        detached:
+          type: boolean
+        documentSource:
+          type: string
+          description: |
+            Where the bytes we hashed came from: `inline` (caller passed
+            documentBase64), `legal:role/type/version/language` (fetched from the
+            Atasuai legal-docs API), `embedded` (read from inside the CMS), or
+            `none` (attached CMS with no extra cross-check).
+        signers:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignerVerifyResult'
+
+    SignerVerifyResult:
+      type: object
+      required: [signatureValid]
+      properties:
+        certInfo:
+          $ref: '#/components/schemas/CertInfo'
+        signatureValid:
+          type: boolean
+          description: Signature value over signedAttrs verifies against the cert's public key
+        documentDigestMatches:
+          type: [boolean, 'null']
+          description: |
+            Hash of the document matches the messageDigest signed attribute. Null when
+            we couldn't run the check (no document supplied or unrecognized hash OID).
+        certValidAtSigningTime:
+          type: [boolean, 'null']
+          description: signingTime attribute is within the cert's NotBefore/NotAfter window
+        digestAlgorithmOid:
+          type: [string, 'null']
+          example: '1.2.643.7.1.1.2.3'
+        signedAtIso:
+          type: [string, 'null']
+          format: date-time
 
     ErrorResponse:
       type: object
