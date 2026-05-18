@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>egov-helper QR demo</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 720px; margin: 32px auto; padding: 0 16px; color: #222; }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .sub { color: #666; margin: 0 0 24px; }
+    section { border: 1px solid #ddd; border-radius: 12px; padding: 20px; margin-bottom: 16px; background: #fafafa; }
+    button { padding: 8px 16px; font-size: 14px; border: 0; border-radius: 8px; background: #2b7fff; color: #fff; cursor: pointer; }
+    button:disabled { background: #bbb; cursor: not-allowed; }
+    .stage { margin: 16px 0; font-weight: 600; }
+    .stage.idle    { color: #888; }
+    .stage.scan    { color: #2b7fff; }
+    .stage.signing { color: #f59e0b; }
+    .stage.verify  { color: #8b5cf6; }
+    .stage.done    { color: #16a34a; }
+    .stage.error   { color: #dc2626; }
+    img.qr { display: block; margin: 12px auto; width: 320px; height: 320px; image-rendering: pixelated; background: #fff; }
+    pre.result { background: #111; color: #fafafa; padding: 12px; border-radius: 8px; font-size: 12px; overflow: auto; }
+    .err { color: #dc2626; }
+    code { background: #eee; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>egov-helper · QR + logo + backend storage</h1>
+  <p class="sub">Pick a file, then "Sign with eGov Mobile". The mock SIGEX auto-signs after 2.5s — no phone needed.</p>
+
+  <section>
+    <input id="file" type="file" />
+    <button id="sign" disabled>Sign with eGov Mobile</button>
+
+    <div id="stage" class="stage idle" data-stage="idle">Idle — pick a file to begin.</div>
+
+    <img id="qr" class="qr" hidden alt="Scan with eGov Mobile" />
+
+    <pre id="result" class="result" hidden></pre>
+    <p id="error" class="err" hidden></p>
+  </section>
+
+  <section>
+    <p><strong>Architecture</strong> — open DevTools network tab to watch the calls:</p>
+    <ul style="font-size: 13px; color: #555;">
+      <li>Mock SIGEX: <code>http://localhost:8080</code> — produces QR, auto-signs after 2.5s</li>
+      <li>Mock Kalkan: <code>http://localhost:7676</code> — verifies the CMS</li>
+      <li>App backend: <code>http://localhost:4000</code> — stores the contract</li>
+    </ul>
+  </section>
+
+  <!-- Atasuai logo as an inline SVG data URL so the demo has zero file deps. -->
+  <script>
+    window.ATASUAI_LOGO = 'data:image/svg+xml;utf8,'
+      + encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+          + '<rect width="100" height="100" rx="16" fill="#2b7fff"/>'
+          + '<path d="M62 28 L40 50 L62 72" stroke="#fff" stroke-width="10"'
+          + ' stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
+          + '</svg>',
+        );
+  </script>
+
+  <script src="/lib/egov-helper.min.js"></script>
+  <script>
+    const $stage = document.getElementById('stage');
+    const $qr    = document.getElementById('qr');
+    const $btn   = document.getElementById('sign');
+    const $file  = document.getElementById('file');
+    const $err   = document.getElementById('error');
+    const $res   = document.getElementById('result');
+
+    function stage(kind, msg) {
+      $stage.className = 'stage ' + kind;
+      $stage.dataset.stage = kind;
+      $stage.textContent = msg;
+    }
+
+    $file.addEventListener('change', () => { $btn.disabled = !$file.files?.[0]; });
+
+    $btn.addEventListener('click', async () => {
+      const file = $file.files?.[0];
+      if (!file) return;
+      $btn.disabled = true;
+      $err.hidden = true; $err.textContent = '';
+      $res.hidden = true; $res.textContent = '';
+
+      try {
+        stage('scan', 'Requesting QR from SIGEX…');
+        const bytes = new Uint8Array(await file.arrayBuffer());
+
+        const sig = await EgovHelper.signDocumentViaQr(bytes, {
+          sigexHub: 'http://localhost:8080',
+          description: 'Sign "' + file.name + '"',
+          documentName: file.name,
+          isPdf: file.type === 'application/pdf',
+          onQrReady: (qr) => {
+            $qr.src = qr.qrCodeDataUrl;
+            $qr.hidden = false;
+            stage('scan', 'Scan the QR with eGov Mobile (mock auto-signs in ~2.5s)');
+          },
+          onDataSent: () => {
+            $qr.hidden = true;
+            stage('signing', 'Phone is signing…');
+          },
+          logo: {
+            src: window.ATASUAI_LOGO,
+            size: 0.22,
+            background: '#ffffff',
+            padding: 6,
+            borderRadius: 8,
+          },
+        });
+
+        stage('verify', 'Sending signature to app backend for verification + storage…');
+        const stored = await fetch('http://localhost:4000/api/contracts/store', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            documentBase64: bytesToBase64(bytes),
+            documentName: file.name,
+            signatureBase64: sig.signatureBase64,
+            signedAt: sig.signedAt.toISOString(),
+          }),
+        }).then((r) => r.json().then((j) => ({ ok: r.ok, json: j })));
+
+        if (!stored.ok) {
+          throw new Error('backend rejected: ' + JSON.stringify(stored.json));
+        }
+
+        stage('done', '✓ Signed, verified, and stored');
+        $res.hidden = false;
+        $res.textContent = JSON.stringify(stored.json, null, 2);
+        $res.dataset.contractId = stored.json.id;
+      } catch (e) {
+        stage('error', 'Failed');
+        $err.hidden = false;
+        $err.textContent = e.message;
+        console.error(e);
+      } finally {
+        $btn.disabled = false;
+      }
+    });
+
+    function bytesToBase64(bytes) {
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin);
+    }
+  </script>
+</body>
+</html>

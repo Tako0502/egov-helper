@@ -24,9 +24,9 @@
  * detected, parseP12() throws with a clear message pointing to RSA reissuance or NCALayer.
  */
 
-export { checkBin } from './bin';
+export { checkBin, checkBinViaQr } from './bin';
 export { signDocument } from './sign';
-export { signDocumentViaQr, isLikelyMobile } from './qr';
+export { signDocumentViaQr, isLikelyMobile, overlayQrLogo } from './qr';
 export { inspectSignature } from './inspect';
 export { addTimestamp } from './timestamp';
 export { parseP12, extractCertInfo } from './parse';
@@ -36,12 +36,14 @@ export type {
   CertInfo,
   CheckBinResult,
   CheckBinOptions,
+  CheckBinViaQrOptions,
   BackendOptions,
   SignOptions,
   SignResult,
   QrSignOptions,
   QrSignResult,
   QrInfo,
+  QrLogoOptions,
   SignerInspection,
   SignatureInspection,
   InspectOptions,

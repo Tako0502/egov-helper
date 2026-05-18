@@ -1,5 +1,5 @@
 import { QRSigningClientCMS } from 'sigex-qr-signing-client';
-import type { QrSignOptions, QrSignResult, QrInfo } from './types';
+import type { QrSignOptions, QrSignResult, QrInfo, QrLogoOptions } from './types';
 import { documentToUint8Array, uint8ArrayToBase64, base64ToUint8Array } from './sign';
 
 /**
@@ -49,8 +49,25 @@ export async function signDocumentViaQr(
 
   await client.registerQRSinging();
 
+  // SIGEX's getQR() returns the bare base64 string without a data-URL prefix; wrap it
+  // so the result can be used directly as `<img src={qr.qrCodeDataUrl}>`.
+  const rawQr = client.getQR();
+  const sigexQrDataUrl = rawQr.startsWith('data:') ? rawQr : `data:image/png;base64,${rawQr}`;
+
+  // If the caller wants their own logo in the centre, repaint the QR with the overlay.
+  // We swallow overlay failures (logo URL unreachable, canvas tainted, etc.) and fall back
+  // to the original SIGEX QR — the signing flow itself must not break over branding.
+  let qrCodeDataUrl = sigexQrDataUrl;
+  if (options.logo) {
+    try {
+      qrCodeDataUrl = await overlayQrLogo(sigexQrDataUrl, options.logo);
+    } catch (err) {
+      options.onPollError?.(err as Error);
+    }
+  }
+
   const qr: QrInfo = {
-    qrCodeDataUrl: client.getQR(),
+    qrCodeDataUrl,
     eGovMobileLink: client.getEGovMobileLaunchLink(),
     eGovBusinessLink: client.getEGovBusinessLaunchLink(),
     expiresAt: client.expireAt ? new Date(client.expireAt) : null,
@@ -76,6 +93,111 @@ export async function signDocumentViaQr(
     signatureBase64,
     signedAt: new Date(),
   };
+}
+
+/**
+ * Repaint a QR PNG with a custom logo in the centre. Returns a new PNG data URL.
+ *
+ * Works by drawing the QR onto a canvas, masking out the centre with a coloured box, then
+ * drawing the logo on top. The QR payload bytes are unchanged — Reed-Solomon error
+ * correction in the QR absorbs the visual occlusion, so eGov Mobile still scans it.
+ *
+ * Exposed so callers can use the same overlay outside the signing flow (e.g. for a static
+ * preview, or for QRs not produced by this library). Throws if the logo URL can't be
+ * loaded or the canvas is tainted (cross-origin without CORS).
+ *
+ * Browser-only: needs `document.createElement('canvas')` and the DOM `Image` constructor.
+ */
+export async function overlayQrLogo(
+  qrPngDataUrl: string,
+  logo: QrLogoOptions,
+): Promise<string> {
+  if (typeof document === 'undefined' || typeof Image === 'undefined') {
+    throw new Error('overlayQrLogo requires a browser environment (uses <canvas> and Image).');
+  }
+
+  const crossOrigin = logo.crossOrigin === undefined ? 'anonymous' : logo.crossOrigin;
+
+  const [qrImg, logoImg] = await Promise.all([
+    loadImage(qrPngDataUrl, crossOrigin),
+    typeof logo.src === 'string' ? loadImage(logo.src, crossOrigin) : Promise.resolve(logo.src),
+  ]);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = qrImg.naturalWidth || qrImg.width;
+  canvas.height = qrImg.naturalHeight || qrImg.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not get 2D canvas context for QR overlay.');
+
+  ctx.drawImage(qrImg, 0, 0, canvas.width, canvas.height);
+
+  const sizeFraction = clamp(logo.size ?? 0.22, 0.05, 0.4);
+  const padding = Math.max(0, logo.padding ?? 6);
+  const background = logo.background ?? '#ffffff';
+  const borderRadius = Math.max(0, logo.borderRadius ?? 0);
+
+  const logoSide = Math.round(Math.min(canvas.width, canvas.height) * sizeFraction);
+  const boxSide = logoSide + padding * 2;
+  const boxX = Math.round((canvas.width - boxSide) / 2);
+  const boxY = Math.round((canvas.height - boxSide) / 2);
+
+  if (background !== 'transparent') {
+    ctx.fillStyle = background;
+    if (borderRadius > 0) {
+      drawRoundedRectPath(ctx, boxX, boxY, boxSide, boxSide, borderRadius);
+      ctx.fill();
+    } else {
+      ctx.fillRect(boxX, boxY, boxSide, boxSide);
+    }
+  }
+
+  // Preserve aspect ratio if the logo isn't square — fit inside the logoSide×logoSide box.
+  const logoW = logoImg.naturalWidth || logoImg.width;
+  const logoH = logoImg.naturalHeight || logoImg.height;
+  const scale = logoW > 0 && logoH > 0 ? Math.min(logoSide / logoW, logoSide / logoH) : 1;
+  const drawW = Math.round(logoW * scale);
+  const drawH = Math.round(logoH * scale);
+  const drawX = Math.round((canvas.width - drawW) / 2);
+  const drawY = Math.round((canvas.height - drawH) / 2);
+  ctx.drawImage(logoImg, drawX, drawY, drawW, drawH);
+
+  return canvas.toDataURL('image/png');
+}
+
+function loadImage(src: string, crossOrigin: 'anonymous' | 'use-credentials' | null): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    if (crossOrigin !== null) img.crossOrigin = crossOrigin;
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${src.slice(0, 80)}…`));
+    img.src = src;
+  });
+}
+
+function drawRoundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+  ctx.closePath();
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
 }
 
 /**

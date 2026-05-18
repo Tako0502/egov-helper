@@ -123,6 +123,8 @@ const sig = await signDocumentViaQr(contract, {
     }
   },
   onDataSent: () => setStatus('Waiting for signature on your phone…'),
+  // Optional: replace SIGEX's logo in the QR centre with your own brand.
+  logo: { src: '/img/my-logo.svg', size: 0.22, borderRadius: 8 },
 });
 
 // Same result shape — same downstream code.
@@ -295,7 +297,8 @@ Full TypeScript types ship with the package — `import type { ... } from '@smok
 
 | Package | Latest | What's in it |
 |---|---|---|
-| `@smoker_winston/egov-helper` (npm) | 0.4.0 | + `signDocumentViaQr` (eGov Mobile via SIGEX) |
+| `@smoker_winston/egov-helper` (npm) | 0.5.0 | + custom logo overlay on the QR (`logo: { src, size, … }`) + `overlayQrLogo` export |
+| `@smoker_winston/egov-helper` | 0.4.0 | + `signDocumentViaQr` (eGov Mobile via SIGEX) |
 | `@smoker_winston/egov-helper` | 0.3.0 | Backend-only signing; `backendUrl` required everywhere |
 | `Tako0502.EgovHelper` (NuGet) | 0.1.1 | CMS verification, NUC RK CAs bundled |
 

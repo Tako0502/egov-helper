@@ -98,6 +98,63 @@ export interface SignOptions extends BackendOptions {
 export interface CheckBinOptions extends BackendOptions {}
 
 /**
+ * Options for `checkBinViaQr` — the no-.p12 BIN-check flow. Combines the SIGEX QR-signing
+ * pieces (`onQrReady`, `description`, etc.) with the `backendUrl` of your Kalkan signer
+ * (used to extract the cert from the resulting CMS).
+ */
+export interface CheckBinViaQrOptions extends BackendOptions {
+  /** Override what eGov Mobile shows the user. Default: 'BIN verification'. */
+  description?: string;
+  /** SIGEX hub. Default: 'https://sigex.kz'. */
+  sigexHub?: string;
+  /** Called as soon as the QR + deeplinks are ready — render the QR or redirect. */
+  onQrReady?: (qr: QrInfo) => void;
+  /** Called once eGov Mobile has fetched the signing data from SIGEX. */
+  onDataSent?: () => void;
+  /** Called for each transient polling error (for debugging only). */
+  onPollError?: (err: Error) => void;
+  /** Replace the SIGEX logo in the center of the QR with your own. See `QrLogoOptions`. */
+  logo?: QrLogoOptions;
+}
+
+/**
+ * Overlay a custom logo on top of the SIGEX-rendered QR code. We paint your image over
+ * the center of the QR (covering SIGEX's logo). QR error correction (Reed-Solomon) makes
+ * this safe — the payload is unchanged, eGov Mobile still scans it.
+ *
+ * Keep `size` ≤ 0.25 to stay within the recoverable-area budget of the SIGEX QR.
+ */
+export interface QrLogoOptions {
+  /**
+   * The logo to draw. Either a URL/data-URL string, or a preloaded `HTMLImageElement`.
+   * If you already have the logo loaded (e.g. an imported asset), passing the element
+   * avoids a re-fetch.
+   */
+  src: string | HTMLImageElement;
+  /**
+   * Logo size as a fraction of the QR width. Default: `0.22` (matches SIGEX's own logo size).
+   * Anything above ~0.3 starts to corrupt the QR — keep it small.
+   */
+  size?: number;
+  /**
+   * Background colour drawn behind the logo, to mask SIGEX's logo underneath.
+   * Default: `'#ffffff'`. Set to `'transparent'` to skip the mask (your logo must then
+   * fully cover SIGEX's, or the result will look messy).
+   */
+  background?: string;
+  /** Padding (in px) between the background box and the logo image. Default: `6`. */
+  padding?: number;
+  /** Corner radius (in px) of the background box. Default: `0` (square). */
+  borderRadius?: number;
+  /**
+   * `crossOrigin` to set on the `Image` element used to load `src` when it's a string URL.
+   * Default: `'anonymous'`. Set to `null` to skip — but then the canvas may become tainted
+   * and `toDataURL()` will throw.
+   */
+  crossOrigin?: 'anonymous' | 'use-credentials' | null;
+}
+
+/**
  * Info about the QR/deeplink rendered by signDocumentViaQr(). Pass this to your UI:
  * desktop renders the QR; mobile redirects to the deeplink.
  */
@@ -137,6 +194,8 @@ export interface QrSignOptions {
   onDataSent?: () => void;
   /** Called for each transient polling error (debugging). */
   onPollError?: (err: Error) => void;
+  /** Replace the SIGEX logo in the center of the QR with your own. See `QrLogoOptions`. */
+  logo?: QrLogoOptions;
 }
 
 export interface QrSignResult {

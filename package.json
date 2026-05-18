@@ -1,6 +1,6 @@
 {
   "name": "@smoker_winston/egov-helper",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Browser-side helper for Kazakhstan e-Gov digital signatures (NUC RK / pki.gov.kz): verify a typed BIN/IIN against a .p12 certificate, sign documents as CAdES-BES, and decode CMS signatures — all without NCALayer.",
   "homepage": "https://github.com/Tako0502/egov-helper#readme",
   "repository": {
@@ -38,8 +38,10 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node scripts/smoke-test.mjs",
+    "test:e2e": "npm run build && node scripts/e2e/run-test.mjs",
     "demo": "npm run build && npx --yes serve examples/plain-html -l 5173",
-    "prepublishOnly": "npm run typecheck && npm run build && node scripts/smoke-test.mjs"
+    "demo:qr": "npm run build && node scripts/e2e/run-demo.mjs",
+    "prepublishOnly": "npm run typecheck && npm run build && node scripts/smoke-test.mjs && node scripts/e2e/run-test.mjs"
   },
   "dependencies": {
     "node-forge": "^1.3.1",
@@ -48,6 +50,9 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/node-forge": "^1.3.11",
+    "jsqr": "^1.4.0",
+    "playwright": "^1.60.0",
+    "qrcode": "^1.5.4",
     "tsup": "^8.0.2",
     "typescript": "^5.4.5"
   },
