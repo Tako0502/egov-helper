@@ -16,7 +16,7 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "egov-helper": "./dist/cli.mjs"
+    "egov-helper": "dist/cli.mjs"
   },
   "exports": {
     ".": {
