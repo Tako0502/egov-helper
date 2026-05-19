@@ -277,19 +277,22 @@ components:
         role:
           type: string
           example: seller
-          description: Atasuai legal-doc fetch param. Allowed chars  [A-Za-z0-9._-]
+          description: Atasuai legal-doc fetch param. Required. Allowed chars [A-Za-z0-9._-]
         type:
           type: string
           example: public-offer
-          description: Atasuai legal-doc fetch param. Allowed chars  [A-Za-z0-9._-]
-        version:
-          type: string
-          example: "1"
-          description: Atasuai legal-doc fetch param. Allowed chars  [A-Za-z0-9._-]
+          description: Atasuai legal-doc fetch param. Required. Allowed chars [A-Za-z0-9._-]
         language:
           type: string
           example: kz
-          description: Atasuai legal-doc fetch param. Allowed chars  [A-Za-z0-9._-]
+          description: Atasuai legal-doc fetch param. Required. Allowed chars [A-Za-z0-9._-]
+        version:
+          type: string
+          example: "1"
+          description: |
+            Atasuai legal-doc fetch param. **Optional.** Omit for endpoints like
+            `/contract/latest` that always return the current version. When present,
+            appended as `&version=...` to the fetch URL.
 
     CmsVerifyResponse:
       type: object

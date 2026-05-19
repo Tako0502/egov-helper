@@ -17,12 +17,14 @@ import java.util.regex.Pattern;
  * `/cms/verify` can confirm "did this user sign THIS exact contract?" without trusting the
  * client to ship the doc bytes back.
  *
- * The URL is built from {@code LEGAL_DOC_BASE_URL} plus four query params:
- *   {@code ?role=<role>&type=<type>&version=<version>&language=<language>}
+ * The URL is built from {@code LEGAL_DOC_BASE_URL} plus query params:
+ *   {@code ?role=<role>&type=<type>&language=<language>[&version=<version>]}
  *
- * Param values are URL-encoded, and each is also validated against a strict character
- * whitelist before encoding so a bad/malicious client can't inject path segments, additional
- * query params, or schemes.
+ * {@code role}, {@code type}, and {@code language} are required. {@code version} is
+ * optional — omit it for "give me the latest" endpoints (e.g.
+ * {@code https://atasuai.com/legal/api/contract/latest}). Param values are URL-encoded,
+ * and each is also validated against a strict character whitelist before encoding so a
+ * bad/malicious client can't inject path segments, additional query params, or schemes.
  *
  * Configurable via env: {@code LEGAL_DOC_BASE_URL}, {@code LEGAL_DOC_TIMEOUT_MS}.
  */
@@ -67,20 +69,25 @@ public final class LegalDocFetcher {
         }
         requireSafe("role", role);
         requireSafe("type", type);
-        requireSafe("version", version);
         requireSafe("language", language);
+        // version is optional — validated only if present.
+        if (notBlank(version)) {
+            requireSafeFormat("version", version);
+        }
 
-        // Build URL. Param order matches the integration spec (role, type, version, language).
-        String url = baseUrl
-            + "?role="     + URLEncoder.encode(role,     StandardCharsets.UTF_8)
-            + "&type="     + URLEncoder.encode(type,     StandardCharsets.UTF_8)
-            + "&version="  + URLEncoder.encode(version,  StandardCharsets.UTF_8)
-            + "&language=" + URLEncoder.encode(language, StandardCharsets.UTF_8);
+        StringBuilder url = new StringBuilder(baseUrl)
+            .append("?role=").append(URLEncoder.encode(role, StandardCharsets.UTF_8))
+            .append("&type=").append(URLEncoder.encode(type, StandardCharsets.UTF_8))
+            .append("&language=").append(URLEncoder.encode(language, StandardCharsets.UTF_8));
+        if (notBlank(version)) {
+            url.append("&version=").append(URLEncoder.encode(version, StandardCharsets.UTF_8));
+        }
+        String finalUrl = url.toString();
 
-        log.debug("fetching legal doc: {}", url);
+        log.debug("fetching legal doc: {}", finalUrl);
 
         HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create(url))
+            .uri(URI.create(finalUrl))
             .timeout(timeout)
             .header("Accept", "application/pdf, application/octet-stream, */*")
             .GET()
@@ -89,11 +96,11 @@ public final class LegalDocFetcher {
         HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             throw new java.io.IOException(
-                "Legal-doc endpoint returned HTTP " + resp.statusCode() + " for " + url);
+                "Legal-doc endpoint returned HTTP " + resp.statusCode() + " for " + finalUrl);
         }
         byte[] body = resp.body();
         if (body == null || body.length == 0) {
-            throw new java.io.IOException("Legal-doc endpoint returned an empty body for " + url);
+            throw new java.io.IOException("Legal-doc endpoint returned an empty body for " + finalUrl);
         }
         if (body.length > MAX_DOC_BYTES) {
             throw new java.io.IOException(
@@ -103,13 +110,21 @@ public final class LegalDocFetcher {
     }
 
     private static void requireSafe(String name, String value) {
-        if (value == null || value.isEmpty()) {
+        if (!notBlank(value)) {
             throw new IllegalArgumentException("Missing legal-doc param: " + name);
         }
+        requireSafeFormat(name, value);
+    }
+
+    private static void requireSafeFormat(String name, String value) {
         if (!SAFE_PARAM.matcher(value).matches()) {
             throw new IllegalArgumentException(
                 "Legal-doc param '" + name + "' contains disallowed characters " +
                 "(allowed: letters, digits, '.', '-', '_')");
         }
+    }
+
+    private static boolean notBlank(String s) {
+        return s != null && !s.isBlank();
     }
 }

@@ -208,14 +208,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cmsBase64\": \"{{cmsBase64}}\",\n  \"version\": \"{{legalDocVersion}}\",\n  \"type\": \"{{legalDocType}}\",\n  \"role\": \"{{legalDocRole}}\",\n  \"language\": \"{{legalDocLanguage}}\"\n}"
+              "raw": "{\n  \"cmsBase64\": \"{{cmsBase64}}\",\n  \"role\": \"{{legalDocRole}}\",\n  \"type\": \"{{legalDocType}}\",\n  \"language\": \"{{legalDocLanguage}}\"\n}"
             },
             "url": {
               "raw": "{{signerBaseUrl}}/cms/verify",
               "host": ["{{signerBaseUrl}}"],
               "path": ["cms", "verify"]
             },
-            "description": "Atasuai legal-docs integration. Instead of sending the document bytes, you send four params and the signer service fetches the canonical PDF from:\n\n```\n{{LEGAL_DOC_BASE_URL}}?role={{legalDocRole}}&type={{legalDocType}}&version={{legalDocVersion}}&language={{legalDocLanguage}}\n```\n\nThe server hashes the fetched bytes and compares to the CMS's messageDigest, producing the same response as the inline-doc variant. `documentSource` in the response will be `legal:<role>/<type>/<version>/<language>` so you can confirm exactly which doc was checked.\n\nServer-side prerequisites:\n- `LEGAL_DOC_BASE_URL` env var must be set on the signer (e.g. `https://atasuai.example.com/legal/api/contract/pdf`).\n- The legal-docs endpoint must return the PDF body with HTTP 200.\n\nClient-side prerequisites:\n- `{{cmsBase64}}` populated (run `/sign` or the QR flow first).\n- The four `legalDoc*` env vars set to the same role/type/version/language the user signed."
+            "description": "Atasuai legal-docs integration. Instead of sending the document bytes, you send three required params (and an optional `version`) and the signer fetches the canonical PDF from:\n\n```\n{{LEGAL_DOC_BASE_URL}}?role={{legalDocRole}}&type={{legalDocType}}&language={{legalDocLanguage}}\n```\n\nThe server hashes the fetched bytes and compares to the CMS's messageDigest, producing the same response as the inline-doc variant. `documentSource` in the response will be `legal:<role>/<type>/<language>[/v<version>]` so you can confirm exactly which doc was checked.\n\n**Server-side prerequisites:**\n- `LEGAL_DOC_BASE_URL` env var must be set on the signer. For the Atasuai integration that's `https://atasuai.com/legal/api/contract/latest` (always-latest endpoint, no version param needed).\n- The legal-docs endpoint must return the PDF body with HTTP 200.\n\n**Client-side prerequisites:**\n- `{{cmsBase64}}` populated (run `/sign` or the QR flow first).\n- `legalDocRole`, `legalDocType`, `legalDocLanguage` env vars set to match what the user signed.\n\n**Optional:** pass `\"version\": \"...\"` in the body if your legal endpoint is versioned. Omit otherwise (default for the `/contract/latest` endpoint)."
           },
           "response": []
         }

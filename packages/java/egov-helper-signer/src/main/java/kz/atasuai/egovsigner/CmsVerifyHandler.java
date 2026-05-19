@@ -132,7 +132,8 @@ public final class CmsVerifyHandler {
             }
             try {
                 documentBytes = legalDocFetcher.fetch(req.role, req.type, req.version, req.language);
-                documentSource = "legal:" + req.role + "/" + req.type + "/" + req.version + "/" + req.language;
+                documentSource = "legal:" + req.role + "/" + req.type + "/" + req.language
+                    + (notBlank(req.version) ? "/v" + req.version : "");
             } catch (IllegalArgumentException e) {
                 badRequest(ctx, e.getMessage());
                 return;
