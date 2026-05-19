@@ -37,6 +37,15 @@ public final class CmsVerifyResponse {
      * that's expected if the user signed the Russian variant." Null when not applicable.
      */
     @JsonProperty("languagesTried") public java.util.List<String> languagesTried;
+    /**
+     * Set when verification could not complete because of an upstream/internal failure
+     * (e.g. legal-doc fetch returned 404, network timeout, malformed CMS bytes). The
+     * response status code is intentionally 200 — Cloudflare and other edge proxies
+     * tend to replace 5xx bodies with their own error pages, hiding this message from
+     * callers. When `error` is present, `valid` is always false and the rest of the
+     * fields may be empty.
+     */
+    @JsonProperty("error") public String error;
     /** Per-signer detail. eGov Mobile produces exactly one; corporate flows may have more. */
     @JsonProperty("signers") public java.util.List<SignerVerifyResult> signers = new java.util.ArrayList<>();
 

@@ -148,13 +148,11 @@ public final class CmsVerifyHandler {
                 badRequest(ctx, e.getMessage());
                 return;
             } catch (java.io.IOException e) {
-                ctx.status(HttpStatus.BAD_GATEWAY);
-                ctx.json(new ErrorResponse("Failed to fetch legal doc: " + e.getMessage()));
+                upstreamFailure(ctx, "Failed to fetch legal doc: " + e.getMessage());
                 return;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                ctx.status(HttpStatus.BAD_GATEWAY);
-                ctx.json(new ErrorResponse("Legal-doc fetch was interrupted"));
+                upstreamFailure(ctx, "Legal-doc fetch was interrupted");
                 return;
             }
         }
@@ -277,9 +275,25 @@ public final class CmsVerifyHandler {
             badRequest(ctx, e.getMessage());
         } catch (Exception e) {
             log.error("CMS verify failed", e);
-            ctx.status(HttpStatus.BAD_REQUEST);
-            ctx.json(new ErrorResponse("Could not verify the CMS: " + e.getMessage()));
+            // Return 200 with error in body so edge proxies (Cloudflare etc.) don't swallow
+            // the message. The caller checks `valid` and `error` instead of HTTP status.
+            upstreamFailure(ctx, "Could not verify the CMS: " + e.getMessage());
         }
+    }
+
+    /**
+     * Surface an upstream / internal-runtime failure as a 200 OK with a populated
+     * `error` field. We return 200 (not 5xx) on purpose: edge proxies like Cloudflare
+     * intercept 5xx and replace the response body with their own branded error page,
+     * which hides the actual cause from the caller. Genuine 4xx client errors (missing
+     * field, bad base64) still return 4xx via {@link #badRequest}.
+     */
+    private static void upstreamFailure(Context ctx, String message) {
+        CmsVerifyResponse resp = new CmsVerifyResponse();
+        resp.valid = false;
+        resp.error = message;
+        ctx.status(HttpStatus.OK);
+        ctx.json(resp);
     }
 
     /** Extract the embedded eContent from an attached CMS, or null if extraction fails. */
