@@ -307,9 +307,25 @@ components:
           type: string
           description: |
             Where the bytes we hashed came from: `inline` (caller passed
-            documentBase64), `legal:role/type/version/language` (fetched from the
-            Atasuai legal-docs API), `embedded` (read from inside the CMS), or
-            `none` (attached CMS with no extra cross-check).
+            documentBase64), `legal:role/type` (fetched ALL languages from the
+            Atasuai legal-docs API and matched against the CMS), `embedded`
+            (read from inside the CMS), or `none` (attached CMS with no extra
+            cross-check).
+        matchedLanguage:
+          type: [string, 'null']
+          example: ru
+          description: |
+            For the legal-doc fetch path: the language code whose bytes hash-matched
+            the CMS's messageDigest (e.g. `ru` when the user signed the Russian
+            version even though the verifier asked for the Kazakh version). Null
+            for inline doc or when no candidate matched.
+        languagesTried:
+          type: [array, 'null']
+          items: { type: string }
+          example: [kz, ru]
+          description: |
+            For the legal-doc fetch path: language codes we hashed in the search
+            for a match. Null for inline doc.
         signers:
           type: array
           items:

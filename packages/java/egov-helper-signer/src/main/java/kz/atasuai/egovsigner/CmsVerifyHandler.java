@@ -25,6 +25,7 @@ import java.security.Security;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
@@ -110,20 +111,24 @@ public final class CmsVerifyHandler {
             return;
         }
 
-        byte[] documentBytes = null;
+        // Two sources of document bytes:
+        //   - inline (caller passed documentBase64) — single candidate
+        //   - legal-doc fetch — pulls ALL language variants of the active version,
+        //     each one a separate candidate. We hash-match each against the CMS
+        //     messageDigest later and the one that matches wins.
+        List<DocCandidate> candidates = new ArrayList<>();
         String documentSource = "none";
+        List<String> languagesTried = null;
 
-        // Priority 1: caller passed the document inline.
         if (req.documentBase64 != null && !req.documentBase64.isEmpty()) {
             try {
-                documentBytes = Base64.getDecoder().decode(req.documentBase64);
+                candidates.add(new DocCandidate(Base64.getDecoder().decode(req.documentBase64), null));
                 documentSource = "inline";
             } catch (IllegalArgumentException e) {
                 badRequest(ctx, "documentBase64 is not valid base64");
                 return;
             }
         }
-        // Priority 2: caller wants us to fetch the canonical legal doc.
         else if (anyLegalDocParamPresent(req)) {
             if (!legalDocFetcher.isConfigured()) {
                 badRequest(ctx, "Server is not configured for legal-doc fetch. " +
@@ -131,9 +136,14 @@ public final class CmsVerifyHandler {
                 return;
             }
             try {
-                documentBytes = legalDocFetcher.fetch(req.role, req.type, req.version, req.language);
-                documentSource = "legal:" + req.role + "/" + req.type + "/" + req.language
-                    + (notBlank(req.version) ? "/v" + req.version : "");
+                List<LegalDocFetcher.LangVariant> variants =
+                    legalDocFetcher.fetchAllLanguages(req.role, req.type);
+                languagesTried = new ArrayList<>(variants.size());
+                for (LegalDocFetcher.LangVariant v : variants) {
+                    candidates.add(new DocCandidate(v.bytes, v.language));
+                    languagesTried.add(v.language);
+                }
+                documentSource = "legal:" + req.role + "/" + req.type;
             } catch (IllegalArgumentException e) {
                 badRequest(ctx, e.getMessage());
                 return;
@@ -150,10 +160,8 @@ public final class CmsVerifyHandler {
         }
 
         if (debugDump) {
-            log.info("cms verify request: cms base64 length={}, doc source={}, doc bytes={}",
-                req.cmsBase64.length(),
-                documentSource,
-                documentBytes == null ? 0 : documentBytes.length);
+            log.info("cms verify request: cms base64 length={}, doc source={}, candidates={}",
+                req.cmsBase64.length(), documentSource, candidates.size());
         }
 
         try {
@@ -163,27 +171,36 @@ public final class CmsVerifyHandler {
 
             // Detect attached vs detached by checking whether the CMS carries encapsulated content.
             boolean isAttached = cms.getSignedContent() != null;
-            if (!isAttached) {
-                if (documentBytes == null) {
+            byte[] documentBytes;     // bytes we'll hash + verify against
+            String matchedLanguage = null;  // set if a legal-doc candidate matched
+
+            if (isAttached) {
+                documentBytes = extractEmbeddedContent(cms);
+            } else {
+                if (candidates.isEmpty()) {
                     badRequest(ctx,
-                        "CMS is detached (no encapsulated content) — pass documentBase64 to verify");
+                        "CMS is detached (no encapsulated content) — pass documentBase64 or legal-doc params to verify");
                     return;
                 }
-                // Reconstruct with the document so Kalkan's verify() can compute the digest internally.
+                // Pick the candidate whose hash matches the messageDigest attribute.
+                // For single-candidate inline, this is just "use it"; for multi-candidate
+                // legal-doc, this picks whichever language's bytes the signer actually signed.
+                DocCandidate matched = pickMatchingCandidate(cms, candidates);
+                documentBytes = matched.bytes;
+                matchedLanguage = matched.language;
+                // Reconstruct CMS with the matched bytes so Kalkan's verify() works.
                 cms = new CMSSignedData(new CMSProcessableByteArray(documentBytes), cmsBytes);
             }
 
-            // Even when attached, we still want to expose documentDigestMatches if the caller
-            // gave us a document — useful for "the CMS says it embeds doc X; the user uploaded
-            // doc Y; do they actually agree?" cross-checks.
-            byte[] docForDigestCompare = isAttached
-                ? extractEmbeddedContent(cms)
-                : documentBytes;
+            byte[] docForDigestCompare = documentBytes;
 
             CmsVerifyResponse resp = new CmsVerifyResponse();
             resp.detached = !isAttached;
-            resp.documentSource = documentBytes != null ? documentSource
-                : (isAttached ? "embedded" : "none");
+            resp.documentSource = candidates.isEmpty()
+                ? (isAttached ? "embedded" : "none")
+                : documentSource;
+            resp.matchedLanguage = matchedLanguage;
+            resp.languagesTried = languagesTried;
             resp.valid = true;  // flip to false the moment any per-signer check fails
 
             @SuppressWarnings("unchecked")
@@ -314,6 +331,54 @@ public final class CmsVerifyHandler {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** A document we'll try to verify against the CMS. `language` is set only when sourced from the legal API. */
+    private static final class DocCandidate {
+        final byte[] bytes;
+        final String language;
+        DocCandidate(byte[] bytes, String language) { this.bytes = bytes; this.language = language; }
+    }
+
+    /**
+     * Pick the candidate whose hash matches the CMS's messageDigest. When only one
+     * candidate exists (inline path) it wins by default. When multiple candidates are
+     * supplied (legal-doc path returning all language variants), we hash each with the
+     * signer's digest algorithm and return the one whose hash equals the messageDigest
+     * attribute. If none match, returns the first candidate so the downstream verify
+     * still runs and surfaces the failure as documentDigestMatches=false.
+     */
+    private static DocCandidate pickMatchingCandidate(CMSSignedData cms, List<DocCandidate> candidates)
+            throws java.io.IOException {
+        if (candidates.size() == 1) return candidates.get(0);
+
+        @SuppressWarnings("unchecked")
+        Collection<SignerInformation> signers = (Collection<SignerInformation>) cms.getSignerInfos().getSigners();
+        if (signers.isEmpty()) return candidates.get(0);
+        SignerInformation firstSigner = signers.iterator().next();
+
+        AttributeTable signedAttrs = firstSigner.getSignedAttributes();
+        if (signedAttrs == null) return candidates.get(0);
+        Attribute mdAttr = signedAttrs.get(CMSAttributes.messageDigest);
+        if (mdAttr == null) return candidates.get(0);
+        DEREncodable mdValue = mdAttr.getAttrValues().getObjectAt(0);
+        if (!(mdValue instanceof ASN1OctetString)) return candidates.get(0);
+        byte[] expected = ((ASN1OctetString) mdValue).getOctets();
+
+        String digestOid = firstSigner.getDigestAlgOID();
+        for (DocCandidate c : candidates) {
+            try {
+                MessageDigest md = MessageDigest.getInstance(digestOid, kalkanProvider);
+                byte[] actual = md.digest(c.bytes);
+                if (constantTimeEquals(actual, expected)) {
+                    return c;
+                }
+            } catch (Exception e) {
+                log.debug("MessageDigest for OID {} failed", digestOid, e);
+            }
+        }
+        // No match — return the first so downstream verification reports the failure.
+        return candidates.get(0);
     }
 
     private static boolean anyLegalDocParamPresent(CmsVerifyRequest req) {

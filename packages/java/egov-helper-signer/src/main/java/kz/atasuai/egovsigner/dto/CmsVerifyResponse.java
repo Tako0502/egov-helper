@@ -18,12 +18,25 @@ public final class CmsVerifyResponse {
     @JsonProperty("detached") public boolean detached;
     /**
      * Where the bytes we hashed came from:
-     *   "inline"   — caller passed documentBase64
-     *   "legal:role/type/version/language" — fetched from LEGAL_DOC_BASE_URL with these params
-     *   "embedded" — CMS was attached, doc was inside it
-     *   "none"     — verified an attached CMS with no extra cross-check
+     *   "inline"               — caller passed documentBase64
+     *   "legal:role/type"      — fetched from LEGAL_DOC_BASE_URL; matchedLanguage tells you which variant matched
+     *   "embedded"             — CMS was attached, doc was inside it
+     *   "none"                 — verified an attached CMS with no extra cross-check
      */
     @JsonProperty("documentSource") public String documentSource;
+    /**
+     * For the legal-doc fetch path: the language whose bytes hash-matched the CMS's
+     * messageDigest (e.g. "ru" when the user signed the Russian version even though the
+     * verifier asked for the Kazakh version). Null when verification used an inline doc
+     * or no language matched.
+     */
+    @JsonProperty("matchedLanguage") public String matchedLanguage;
+    /**
+     * For the legal-doc fetch path: the language codes we hashed against the CMS while
+     * looking for a match, in the order tried. Useful for "I asked for kz but ru matched —
+     * that's expected if the user signed the Russian variant." Null when not applicable.
+     */
+    @JsonProperty("languagesTried") public java.util.List<String> languagesTried;
     /** Per-signer detail. eGov Mobile produces exactly one; corporate flows may have more. */
     @JsonProperty("signers") public java.util.List<SignerVerifyResult> signers = new java.util.ArrayList<>();
 
