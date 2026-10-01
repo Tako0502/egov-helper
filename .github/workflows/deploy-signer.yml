@@ -71,7 +71,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           cat > ~/.ssh/config <<'EOF'
           Host atasuai-jump
-              HostName 94.131.87.133
+              HostName 185.32.84.195
               User jump_admin
               IdentityFile ~/.ssh/deploy_key
               IdentitiesOnly yes
